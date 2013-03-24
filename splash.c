@@ -115,8 +115,8 @@ int BLACK=0;
 int REDRAW=0;
 
 //Paths relative to /usr/bin/splash
-char *BARIMG="../../share/images/splash/progressbar.jpg";
-char *FONT="../../share/fonts/splash/Comfortaa-Light.ttf";
+char *BARIMG="../../usr/share/images/splash/progressbar.jpg";
+char *FONT="../../usr/share/fonts/splash/Comfortaa-Light.ttf";
 char MEMORY[255]="/run/";
 char PID[255]="/run/";
 
