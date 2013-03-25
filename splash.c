@@ -22,6 +22,9 @@ sudo apt-get install gcc uthash-dev
 
 gcc splash.c -lm -o splash /usr/lib/arm-linux-gnueabihf/libjpeg.a /usr/lib/arm-linux-gnueabihf/libfreetype.a /usr/lib/arm-linux-gnueabihf/libz.a -I/usr/include/freetype2/
 */
+#ifndef _GLOBAL_H_
+#define _GLOBAL_H_
+#endif
 
 #include "logger.h"
 #include <stdlib.h>
@@ -122,7 +125,8 @@ char MEMORY[255]="/run/";
 char PID[255]="/run/";
 char absPid[255];
 char absMem[255];
-
+char g_logfile[255]="/var/log/splash.log";
+int  g_logging=0;
 
 char *MSGTXT="loading...";
 int FONTSIZE=32;
@@ -967,6 +971,13 @@ void parseArguments(struct arguments_t *arguments) {
 				sleep(1);
 				exit(0);
 			break;
+			case 'k':
+				g_logging=1;
+				if(strlen(argument->value)>255) 
+					continue;
+				else
+					sprintf(g_logfile,"%s",argument->value);
+			break;
 		}
 	}					
 }
@@ -994,6 +1005,7 @@ int main(int argc, char **argv) {
 		{"font", required_argument, NULL, 'h'},
 		{"fontsize", required_argument, NULL, 'i'},
 		{"exit", no_argument, NULL, 'j'},
+		{"log", optional_argument, NULL, 'k'},
 		{0, 0, 0, 0}
 	};
 	
@@ -1028,7 +1040,7 @@ int main(int argc, char **argv) {
 	
 	//Store all command line arguments into hash 
 	while(1) {
-		int opt = getopt_long(argc, argv, "abcd:e:fgh:i:", options, NULL);
+		int opt = getopt_long(argc, argv, "abcd:e:fgh:i:k:", options, NULL);
 
 		if(opt == -1) {
 			break;
