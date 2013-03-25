@@ -1,10 +1,17 @@
+#ifndef _GLOBAL_H_
+#define _GLOBAL_H_
+#endif
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <time.h>
+
  
 FILE *fp ;
 static int SESSION_TRACKER; //Keeps track of session
- 
+extern int g_logging;
+extern char g_logfile[255]; 
+
 char* print_time()
 {
     time_t t;
@@ -22,11 +29,13 @@ void log_print(char* filename, int line, char *fmt,...)
     va_list         list;
     char            *p, *r;
     int             e;
- 
+
+    if(g_logging==0) return;
+
     if(SESSION_TRACKER > 0)
-      fp = fopen ("/var/log/splash.log","a+");
+      fp = fopen (g_logfile, "a+");
     else
-      fp = fopen ("/var/log/splash.log","w");
+      fp = fopen (g_logfile, "w");
      
     fprintf(fp,"%s ",print_time());
     va_start( list, fmt );
