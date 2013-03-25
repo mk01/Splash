@@ -23,6 +23,7 @@ sudo apt-get install gcc uthash-dev
 gcc splash.c -lm -o splash /usr/lib/arm-linux-gnueabihf/libjpeg.a /usr/lib/arm-linux-gnueabihf/libfreetype.a /usr/lib/arm-linux-gnueabihf/libz.a -I/usr/include/freetype2/
 */
 
+#include "logger.h"
 #include <stdlib.h>
 #include <signal.h>
 #include <unistd.h>
@@ -115,10 +116,13 @@ int BLACK=0;
 int REDRAW=0;
 
 //Paths relative to /usr/bin/splash
-char *BARIMG="../../share/images/splash/progressbar.jpg";
-char *FONT="../../share/fonts/splash/Comfortaa-Light.ttf";
-char MEMORY[255]="../../../var/";
-char PID[255]="../../../var/";
+char *BARIMG="images/progressbar.jpg";
+char *FONT="fonts/Comfortaa-Light.ttf";
+char MEMORY[255]="/run/";
+char PID[255]="/run/";
+char absPid[255];
+char absMem[255];
+
 
 char *MSGTXT="loading...";
 int FONTSIZE=32;
@@ -313,78 +317,17 @@ double sqr(double a) {
 	return (a*a);
 }
 
-char * rel2abs(const char *path, const char *base) {
-	const char *pp, *bp;
-	char result[255];
+char * rel2abs(const char *base, const char *path ) {
 	int size=255;
-	const char *endp = result + size - 1;
-	char *rp;
-	int length;
+	char result[size];
 
-	if (*path == '/') {
-		if (strlen(path) >= size)
-			goto erange;
-		strcpy(result, path);
-		goto finish;
-	} else if (*base != '/' || !size) {
-		errno = EINVAL;
+	if(strlen(path)+strlen(base) > size) {
+		errno = ERANGE;
 		return (NULL);
-	} else if (size == 1)
-		goto erange;
+	}	
 
-	length = strlen(base);
-
-	if (!strcmp(path, ".") || !strcmp(path, "./")) {
-		if (length >= size)
-			goto erange;
-		strcpy(result, base);
-		rp = result + length - 1;
-		if (*rp == '/') {
-			if (length > 1)
-				*rp = 0;
-		} else
-			rp++;
-		if (*++path == '/') {
-			*rp++ = '/';
-			if (rp > endp)
-				goto erange;
-			*rp = 0;
-		}
-		goto finish;
-	}
-	bp = base + length;
-	if (*(bp - 1) == '/')
-		--bp;
-		
-	for (pp = path; *pp && *pp == '.'; ) {
-		if (!strncmp(pp, "../", 3)) {
-			pp += 3;
-			while (bp > base && *--bp != '/')
-				;
-		} else if (!strncmp(pp, "./", 2)) {
-			pp += 2;
-		} else if (!strncmp(pp, "..\0", 3)) {
-			pp += 2;
-			while (bp > base && *--bp != '/')
-				;
-		} else
-			break;
-	}
-	length = bp - base;
-	if (length >= size)
-		goto erange;
-	strncpy(result, base, length);
-	rp = result + length;
-	if (*pp || *(pp - 1) == '/' || length == 0)
-		*rp++ = '/';
-	if (rp + strlen(pp) > endp)
-		goto erange;
-	strcpy(rp, pp);
-finish:
+	sprintf(result, "%s.%s", path, base);
 	return result;
-erange:
-	errno = ERANGE;
-	return (NULL);
 }
 
 unsigned short int createColor16bit(int r, int g, int b) {
@@ -537,10 +480,12 @@ int cacheFile(char *filename) {
 	char absPath[255];
 	int i, rc;
 
+	LOG_PRINT("Going to cache %s.%s", PATH,filename);
 	strcpy(absPath,rel2abs(filename, PATH));
 	rc = stat(absPath, &fileinfo);
 
 	if(rc) {
+		LOG_PRINT("Can't cache (open?) %s : %s -> %s", filename, PATH, rel2abs(filename, PATH));
 		return -1;
 	} else {
 		filesize = fileinfo.st_size;
@@ -744,8 +689,6 @@ void fb_clear_screen(void) {
 }
 
 void gc() {
-	char absMem[255];
-	char absPid[255];
 	int x=0, length, err;
 
     keepRunning = 0;
@@ -754,15 +697,6 @@ void gc() {
 		fb_clear_screen();
 		fb_cleanup();
 		
-		strcpy(absPid,rel2abs(PID, PATH));
-		strcpy(absMem,rel2abs(MEMORY, PATH));
-
-		if(strstr(absMem,"rootfs")) {
-			memcpy(absMem,absMem+7,strlen(absMem));
-		}
-		if(strstr(absPid,"rootfs")) {
-			memcpy(absPid,absPid+7,strlen(absPid));
-		}		
 	}
 	munmap(addr, mlength);
 	close(fd);
@@ -830,9 +764,9 @@ void showProgressBar() {
 	offset=253;
 	if((nperc >= 3 && update==1) || SHOWINFINITEBAR) {
 		if(DIRECTION) {
-			drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"../../share/images/splash/emptyStart.jpg");
+			drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"images/emptyStart.jpg");
 		} else {
-			drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"../../share/images/splash/barStart.jpg");
+			drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"images/barStart.jpg");
 		}			
 		if(nperc <= 2) {
 			update=0;
@@ -852,9 +786,9 @@ void showProgressBar() {
 		offset-=lperc;
 		for(i=lperc;i<=((x*5));i++) {
 			if(DIRECTION) {
-				drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"../../share/images/splash/emptyFill.jpg");
+				drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"images/emptyFill.jpg");
 			} else {
-				drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"../../share/images/splash/barFill.jpg");
+				drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"images/barFill.jpg");
 			}
 			offset--;
 			if(SHOWINFINITEBAR) {
@@ -868,9 +802,9 @@ void showProgressBar() {
 	}
 	if((nperc >= 97 && update==1) || SHOWINFINITEBAR) {
 		if(DIRECTION) {
-			drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"../../share/images/splash/emptyEnd.jpg");
+			drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"images/emptyEnd.jpg");
 		} else {
-			drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"../../share/images/splash/barEnd.jpg");
+			drawJPEG(((vinfo.xres/2)-offset),((vinfo.yres/2)+54),"images/barEnd.jpg");
 		}
 		update=0;
 		if(SHOWINFINITEBAR) {
@@ -1040,14 +974,13 @@ void parseArguments(struct arguments_t *arguments) {
 int main(int argc, char **argv) {
 	int i, x, y, opt, length;
 	struct stat s;
-	char absPid[255];
-	char absMem[255];
 	char buf[20];
 	arguments_t *argument, *arguments=NULL;
 	
 	//Extract absolute path of executable
 	length=readlink("/proc/self/exe", PATH, sizeof(PATH));
 	PATH[length] = '\0';
+	LOG_PRINT("Actual path is %s", PATH);
 	
 	//Command line arguments
 	static struct option options[] = {
@@ -1071,11 +1004,9 @@ int main(int argc, char **argv) {
 	
 	//Create data/pid file witht the same name as the executable
 
-	sprintf(PID,"%s%s%s",PID,basename(argv[0]),".pid");
-	sprintf(MEMORY,"%s%s%s",MEMORY,basename(argv[0]),".dat");
-	//Convert relative path to absolute path	
-	strcpy(absPid,rel2abs(PID, PATH));
-	strcpy(absMem,rel2abs(MEMORY, PATH));
+	sprintf(absPid,"%s%s%s",PID,basename(argv[0]),".pid");
+	sprintf(absMem,"%s%s%s",MEMORY,basename(argv[0]),".dat");
+	LOG_PRINT("absPid %s", absPid);
 
 	//Open PID file and lock
 	int pid_file = open(absPid, O_RDWR | O_CREAT, 0644);
@@ -1134,14 +1065,14 @@ int main(int argc, char **argv) {
 					write(pid_file, buf, length);
 					ftruncate(pid_file, length);
 					
-					cacheFile("../../share/images/splash/emptyStart.jpg");
-					cacheFile("../../share/images/splash/emptyEnd.jpg");
-					cacheFile("../../share/images/splash/emptyFill.jpg");
-					cacheFile("../../share/images/splash/barStart.jpg");
-					cacheFile("../../share/images/splash/barEnd.jpg");
-					cacheFile("../../share/images/splash/barFill.jpg");
-					cacheFile("../../share/images/splash/logo.jpg");
-					cacheFile("../../share/images/splash/progressbar.jpg");
+					cacheFile("images/emptyStart.jpg");
+					cacheFile("images/emptyEnd.jpg");
+					cacheFile("images/emptyFill.jpg");
+					cacheFile("images/barStart.jpg");
+					cacheFile("images/barEnd.jpg");
+					cacheFile("images/barFill.jpg");
+					cacheFile("images/logo.jpg");
+					cacheFile("images/progressbar.jpg");
 					cacheFile(BARIMG);
 					cacheFile(FONT);
 					
@@ -1150,7 +1081,7 @@ int main(int argc, char **argv) {
 			
 				if(!BLACK) {
 					if(LOGOCHANGE) {
-						drawJPEG(((vinfo.xres/2)-277),((vinfo.yres/2)-145),"../../share/images/splash/logo.jpg");
+						drawJPEG(((vinfo.xres/2)-277),((vinfo.yres/2)-145),"images/logo.jpg");
 						LOGOCHANGE=0;
 					} if(BARCHANGE) {
 						drawJPEG(((vinfo.xres/2)-277),((vinfo.yres/2)+16),BARIMG);
