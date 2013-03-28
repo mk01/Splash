@@ -78,7 +78,7 @@ off_t moffset = 0;
 int prot = (PROT_READ| PROT_WRITE); 
 int flags = (MAP_SHARED); 
 int fd = -1; 
-int pid_file = -1;
+FILE *pid_file;
 int child = 0;
 
 //Progress bar
@@ -705,11 +705,7 @@ void gc() {
 	munmap(addr, mlength);
 	close(fd);
 	
-	if(child) {
-		flock(pid_file, LOCK_UN);
-	}
-	
-	close(pid_file);
+	fclose(pid_file);
 	if(child) {
 		unlink(absMem);		
 		unlink(absPid);
@@ -973,9 +969,9 @@ void parseArguments(struct arguments_t *arguments) {
 			break;
 			case 'k':
 				g_logging=1;
-				if(strlen(argument->value)>255) 
+				if(strlen(argument->value)>255)
 					continue;
-				else
+				if(!strcmp(argument->value, "")) 
 					sprintf(g_logfile,"%s",argument->value);
 			break;
 		}
@@ -1020,14 +1016,11 @@ int main(int argc, char **argv) {
 	sprintf(absMem,"%s%s%s",MEMORY,basename(argv[0]),".dat");
 	LOG_PRINT("absPid %s", absPid);
 
-	//Open PID file and lock
-	int pid_file = open(absPid, O_RDWR | O_CREAT, 0644);
-	lockf(pid_file, F_LOCK, 0);
-	
-	//Read PID from pid file
-	length = read(pid_file, buf, sizeof(buf)-1);
-	buf[length] = '\0';
-		
+	if( pid_file = fopen(absPid, "wx" ) ) {
+		fprintf(pid_file, "%d", getpid());
+		child=1;
+	}
+
 	//Open memory file
 	fd = open(absMem, O_RDWR | O_CREAT | O_TRUNC);
 	write(fd,"0",1);
@@ -1056,8 +1049,7 @@ int main(int argc, char **argv) {
 	}
 
 	//If program is already running or if no pid found
-	if(kill((pid_t)(atoi(buf)), 0) != 0 || (atoi(buf)) == 0) {
-		child=1;
+	if( child ) {
 		
 		//Process the arguments given to the server
 		parseArguments(arguments);
@@ -1069,13 +1061,7 @@ int main(int argc, char **argv) {
 				if(!INITIALIZED) {
 					//Initialize framebuffer
 					init();
-					
-					//Assign new PID to file
-					lseek(pid_file, 0L, SEEK_SET);
-					length = snprintf(buf, sizeof(buf)-1, "%d\n", getpid());
-					buf[length] = '\0';
-					write(pid_file, buf, length);
-					ftruncate(pid_file, length);
+					LOG_PRINT("changed pid, new pid %d", getpid());
 					
 					cacheFile("images/emptyStart.jpg");
 					cacheFile("images/emptyEnd.jpg");
@@ -1112,14 +1098,15 @@ int main(int argc, char **argv) {
 					sleep(1);
 				}
 			}
-		else
-			gc();
+			else
+			    gc();
+		
 		}
 		
 		//Garbage collect
 		gc();
 	} else {
-		child=0;
+		LOG_PRINT("not main process, just writting new params. pid %d", getpid());
 		//Write arguments to memory for server to read
 		writeArguments(arguments);
 	}
