@@ -5,9 +5,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <time.h>
-
+#include <unistd.h>
  
-FILE *fp ;
 static int SESSION_TRACKER; //Keeps track of session
 extern int g_logging;
 extern char g_logfile[255]; 
@@ -29,14 +28,12 @@ void log_print(char* filename, int line, char *fmt,...)
     va_list         list;
     char            *p, *r;
     int             e;
+    FILE *fp ;
 
-    if(g_logging==0) return;
+    if(g_logging==0 || !(fp = fopen (g_logfile, "a")) ) return;
+    
+    lockf(fileno(fp), F_LOCK, 0);
 
-    if(SESSION_TRACKER > 0)
-      fp = fopen (g_logfile, "a+");
-    else
-      fp = fopen (g_logfile, "w");
-     
     fprintf(fp,"%s ",print_time());
     va_start( list, fmt );
  
