@@ -121,8 +121,8 @@ int REDRAW=0;
 //Paths relative to /usr/bin/splash
 char *BARIMG="images/progressbar.jpg";
 char *FONT="fonts/Comfortaa-Light.ttf";
-char MEMORY[255]="/run/";
-char PID[255]="/run/";
+char MEMORY[255]="/run/splash/";
+char PID[255]="/run/splash/";
 char absPid[255];
 char absMem[255];
 char g_logfile[255]="/var/log/splash.log";
@@ -1016,10 +1016,17 @@ int main(int argc, char **argv) {
 	sprintf(absMem,"%s%s%s",MEMORY,basename(argv[0]),".dat");
 	LOG_PRINT("absPid %s", absPid);
 
-	if( pid_file = fopen(absPid, "wx" ) ) {
-		fprintf(pid_file, "%d", getpid());
-		child=1;
-	}
+	if( ( opt = mkdir(PID, 0777) ) == 0 ) {
+                if( pid_file = fopen(absPid, "wx" ) ) {
+		        fprintf(pid_file, "%d", getpid());
+		        child=1;
+	        }        
+        } else 
+        if( opt == -1 ) {
+                if ( errno != EEXIST ) 
+                        exit(1);
+        }
+
 
 	//Open memory file
 	fd = open(absMem, O_RDWR | O_CREAT | O_TRUNC);
