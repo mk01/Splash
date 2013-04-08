@@ -1016,14 +1016,13 @@ int main(int argc, char **argv) {
 	sprintf(absMem,"%s%s%s",MEMORY,basename(argv[0]),".dat");
 	LOG_PRINT("absPid %s", absPid);
 
-	if( ( opt = mkdir(PID, 0777) ) == 0 ) {
-                if( pid_file = fopen(absPid, "wx" ) ) {
+	if((opt = mkdir(PID, 0777)) == 0) {
+                if(pid_file = fopen(absPid, "wx")) {
 		        fprintf(pid_file, "%d", getpid());
 		        child=1;
 	        }        
-        } else 
-        if( opt == -1 ) {
-                if ( errno != EEXIST ) 
+        } else if(opt == -1) {
+                if (errno != EEXIST) 
                         exit(1);
         }
 
@@ -1056,7 +1055,7 @@ int main(int argc, char **argv) {
 	}
 
 	//If program is already running or if no pid found
-	if( child ) {
+	if(child) {
 		
 		//Process the arguments given to the server
 		parseArguments(arguments);
