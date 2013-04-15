@@ -45,7 +45,6 @@ gcc splash.c -lm -o splash /usr/lib/arm-linux-gnueabihf/libjpeg.a /usr/lib/arm-l
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <getopt.h>
-#include "cp_vt.h"
 
 #include "uthash.h"
 #include <jpeglib.h>
@@ -53,7 +52,7 @@ gcc splash.c -lm -o splash /usr/lib/arm-linux-gnueabihf/libjpeg.a /usr/lib/arm-l
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
-int fbfd,  orig_vt_no = 0, kd_mode;
+int fbfd, tty = 0, orig_vt_no = 0, kd_mode;
 struct fb_var_screeninfo vinfo;
 struct fb_var_screeninfo ovinfo;
 struct fb_fix_screeninfo finfo;
@@ -136,8 +135,6 @@ int LOGOCHANGE=1;
 int BARCHANGE=1;
 int MSGCHANGE=1;
 
-cp_vt vt;
-
 void fb_memset(void *addr, int c, size_t len) {
 #if 1
     unsigned int i, *p;
@@ -152,36 +149,139 @@ void fb_memset(void *addr, int c, size_t len) {
 #endif
 }	
 	
+static inline const char* select_error_str( int existing_error, const char* const existing_error_str, int new_error, const char* const new_error_str ) {
+  // Only report the first error found - any error that follows is probably just a cascading effect.
+  const char* error_str = (char*)( (~(intptr_t)existing_error & (intptr_t)new_error & (intptr_t)new_error_str)
+                                 |  ((intptr_t)existing_error & (intptr_t)existing_error_str) );
+
+  return (error_str);
+}
+	
+static void fb_setvt() {
+	int vtno;
+	const char*    error_str      = NULL;
+	int            error          = 0;
+    struct vt_stat vts;
+    char vtname[12];
+
+	const int   cur_tty                = open( "/dev/tty0", O_RDWR );
+	const int   open_cur_tty_error     = (cur_tty >> ((sizeof(int)*8)-1));
+	const char* open_cur_tty_error_str = "Could not open /dev/tty0. Check permissions.";
+  
+	error_str = select_error_str( error, error_str, open_cur_tty_error, open_cur_tty_error_str );
+	error     = error | open_cur_tty_error;
+	
+	const int   get_state_error     = ioctl( cur_tty, VT_GETSTATE, &vts );
+	const char* get_state_error_str = "VT_GETSTATE failed on /dev/tty0";
+
+	error_str = select_error_str( error, error_str, get_state_error, get_state_error_str );
+	error     = error | get_state_error;
+
+	orig_vt_no = vts.v_active;	
+	
+	const int   open_query_error     = ioctl( cur_tty, VT_OPENQRY, vtno);
+	const char* open_query_error_str = "No open ttys available";
+
+	error_str = select_error_str( error, error_str, open_query_error, open_query_error_str );
+	error     = error | open_query_error;
+
+	const int   close_cur_tty_error     = close( cur_tty );
+	const char* close_cur_tty_error_str = "Could not close parent tty";
+
+	error_str = select_error_str( error, error_str, close_cur_tty_error, close_cur_tty_error_str );
+	error     = error | close_cur_tty_error;	
+	
+    if(vtno < 0) {
+		if (-1 == ioctl(tty,VT_OPENQRY, &vtno) || vtno == -1) {
+			perror("ioctl VT_OPENQRY");
+			exit(1);
+		}
+    }	
+	
+    vtno &= 0xff;
+    sprintf(vtname, "/dev/tty%d", vtno);
+    chown(vtname, getuid(), getgid());
+    if(access(vtname, R_OK | W_OK) == -1) {
+		fprintf(stderr,"access %s: %s\n",vtname,strerror(errno));
+		exit(1);
+    }
+	
+	switch(fork()) {
+		case 0:	
+			break;
+		case -1:
+			perror("fork");
+			exit(1);
+		default:
+			exit(0);
+	}
+
+    close(tty);
+    close(0);
+    close(1);
+    close(2);
+    
+	setsid();
+	open(vtname,O_RDWR);
+	dup(0);
+    dup(0);
+
+    if(-1 == ioctl(tty,VT_GETSTATE, &vts) == -1) {
+		perror("ioctl VT_GETSTATE");
+		exit(1);
+    }
+    orig_vt_no = vts.v_active;
+    
+	if(ioctl(tty,VT_ACTIVATE, vtno) == -1) {
+		perror("ioctl VT_ACTIVATE");
+		exit(1);
+    }
+    if(ioctl(tty,VT_WAITACTIVE, vtno) == -1) {
+		perror("ioctl VT_WAITACTIVE");
+		exit(1);
+    }
+}
+
 void fb_cleanup(void) {
+    if(ioctl(tty,KDSETMODE, kd_mode) == -1)
+		perror("ioctl KDSETMODE");
+    if(ioctl(fbfd,FBIOPUT_VSCREENINFO,&ovinfo) == -1)
+		perror("ioctl FBIOPUT_VSCREENINFO");
+    if(ioctl(fbfd,FBIOGET_FSCREENINFO,&finfo) == -1)
+		perror("ioctl FBIOGET_FSCREENINFO");
+	if(ovinfo.bits_per_pixel == 8 || finfo.visual == FB_VISUAL_DIRECTCOLOR) {
+		if(ioctl(fbfd,FBIOPUTCMAP,&ocmap) == -1)
+			perror("ioctl FBIOPUTCMAP");
+	}
+	close(fbfd);
 
-
-	cp_vt_close(&vt); 
-
+    // if(ioctl(tty,VT_SETMODE, &vt_omode) == -1)
+		// perror("ioctl VT_SETMODE");
+    if(orig_vt_no && ioctl(tty, VT_ACTIVATE, orig_vt_no) == -1)
+		perror("ioctl VT_ACTIVATE");
+    if(orig_vt_no && ioctl(tty, VT_WAITACTIVE, orig_vt_no) == -1)
+		perror("ioctl VT_WAITACTIVE");
+    tcsetattr(tty, TCSANOW, &term);
+    close(tty);
 }
 	
 void init() {
 	unsigned long page_mask;
-    //struct vt_stat vts;
+    struct vt_stat vts;
 	
+	fb_setvt();
 	
-	cp_vt_open_graphics(&vt);
+	if(ioctl(tty,VT_GETSTATE, &vts) == -1) {
+		fprintf(stderr,"ioctl VT_GETSTATE: %s (not a linux console?)\n", strerror(errno));
+		exit(1);
+    }
 	
-	switch(fork()) {
-			case 0:	
-				break;
-			case -1:
-				perror("fork");
-				exit(1);
-			default:
-				exit(0);
-	}
-
-
 	fbfd = open("/dev/fb0", O_RDWR);
 	if (fbfd == -1) {
         perror("Error: cannot open framebuffer device");
         exit(1);
-}
+    }	
+
     if(ioctl(fbfd, FBIOGET_VSCREENINFO, &ovinfo) == -1) {
         perror("Error reading variable information");
         exit(3);
@@ -199,6 +299,16 @@ void init() {
 		}
     }
 	
+	if(ioctl(tty,KDGETMODE, &kd_mode) == -1) {
+		perror("ioctl KDGETMODE");
+		exit(1);
+	}
+    if(ioctl(tty,VT_GETMODE, &vt_omode) == -1) {
+		perror("ioctl VT_GETMODE");
+		exit(1);
+    }
+    tcgetattr(tty, &term);
+    
     if(ioctl(fbfd,FBIOGET_VSCREENINFO,&vinfo) == -1) {
 		perror("ioctl FBIOGET_VSCREENINFO");
 		exit(1);
@@ -220,10 +330,13 @@ void init() {
         exit(4);
     }
 	
+	if(ioctl(tty,KDSETMODE, KD_GRAPHICS) == -1) {
+		perror("ioctl KDSETMODE");
+		fb_cleanup();
+		exit(0);
+    }
+	
 	fb_memset(fbp+fb_mem_offset, 0, finfo.line_length * vinfo.yres);
-
-
-
 }
 
 int min(int a, int b) {
@@ -616,21 +729,29 @@ void fb_clear_screen(void) {
 }
 
 void gc() {
-	int x, length, err;
+	int x=0, length, err;
 
-	if(child || INITIALIZED)  {
+    keepRunning = 0;
+	if(child) {
 		fb_clear_mem();
 		fb_clear_screen();
 		fb_cleanup();
-
-		munmap(addr, mlength);
+		
+	}
+	munmap(addr, mlength);
+	close(fd);
+	
+	fclose(pid_file);
+	if(child) {
+		unlink(absMem);		
+		unlink(absPid);
+		rmdir("/run/splash");
 		close(fbfd);
-		while( close(fd) || fclose(pid_file) || unlink(absMem) || unlink(absPid) || rmdir("/run/splash") );
 
 		for(x=0;x<nrCachedFiles;x++) {
 			free(bytes[x]);
-		}
-	}		
+		}		
+	}
 }
 
 void trap(int dummy) {
@@ -665,7 +786,7 @@ void fb_catch_exit_signals(void) {
 		return;
 
     gc();
-    keepRunning = 0;
+    exit(42);
 }
 
 void showProgressBar() {
@@ -873,7 +994,15 @@ void parseArguments(struct arguments_t *arguments) {
 				MSGCHANGE=1;
 			break;
 			case 'j':
+				if(INITIALIZED) {
+					child=1;
+				} else {
+					child=0;
+				}
 				keepRunning=0;
+				kill(getpid(), SIGQUIT);
+				sleep(1);
+				exit(0);
 			break;
 			case 'k':
 				g_logging=1;
@@ -917,31 +1046,33 @@ int main(int argc, char **argv) {
 	
 	//Catch all exit signal for garbage collection
 	fb_catch_exit_signals();
-
+	
 	//Create data/pid file witht the same name as the executable
+
 	sprintf(absPid,"%s%s%s",PID,basename(argv[0]),".pid");
 	sprintf(absMem,"%s%s%s",MEMORY,basename(argv[0]),".dat");
 	LOG_PRINT("absPid %s", absPid);
 
 	if( ( opt = mkdir(PID, 0777) ) == 0 ) {
-		if( pid_file = fopen(absPid, "wx" ) ) {
+                if( pid_file = fopen(absPid, "wx" ) ) {
 		        fprintf(pid_file, "%d", getpid());
 		        child=1;
 	        }        
         } else 
         if( opt == -1 ) {
-		if (errno == EEXIST)
-			child=0;
+                if ( errno != EEXIST ) 
+                        exit(1);
         }
+
 
 	//Open memory file
 	fd = open(absMem, O_RDWR | O_CREAT | O_TRUNC);
 	write(fd,"0",1);
 	if(fd == 0) { 
-		exit(3);
+		exit(1);
 	} 
 	if(lseek(fd, mlength - 1, SEEK_SET) == -1) { 
-		exit(4);
+		exit(1);
 	}
 	
 	//Store all command line arguments into hash 
@@ -956,20 +1087,21 @@ int main(int argc, char **argv) {
 			argument->id=opt;
 			if(optarg) {
 				strcpy(argument->value,optarg);
-			} else {
-				strcpy(argument->value,"");
 			}
 			HASH_ADD_INT(arguments,id,argument);
 		}
 	}
-	parseArguments(arguments);
+
 	//If program is already running or if no pid found
 	if( child ) {
 		
-			while(keepRunning) 
-			{
-				//Read arguments from memory given to client
-				parseArguments(readArguments());
+		//Process the arguments given to the server
+		parseArguments(arguments);
+		while(keepRunning) {
+		
+			//Read arguments from memory given to client
+			parseArguments(readArguments());
+			if(keepRunning) {
 				if(!INITIALIZED) {
 					//Initialize framebuffer
 					init();
@@ -1010,14 +1142,17 @@ int main(int argc, char **argv) {
 					sleep(1);
 				}
 			}
-			
-			gc();
+			else
+			    gc();
 		
+		}
+		
+		//Garbage collect
+		gc();
 	} else {
 		LOG_PRINT("not main process, just writting new params. pid %d", getpid());
 		//Write arguments to memory for server to read
 		writeArguments(arguments);
 	}
-    
-	return 0;
+    return 0;
 }
