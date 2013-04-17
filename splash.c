@@ -69,7 +69,7 @@ static int keepRunning = 1;
 int fb_mem_offset = 0;
 int output;
 int suspended = 0;
-pid_t pid;
+char * processid[255];
 
 //Shared memory
 size_t mlength = 4096; 
@@ -77,8 +77,8 @@ char * addr = 0;
 off_t moffset = 0; 
 int prot = (PROT_READ| PROT_WRITE); 
 int flags = (MAP_SHARED); 
-int fd = -1; 
-FILE *pid_file;
+int fd = -1;
+int pid_file;
 int child = 0;
 
 //Progress bar
@@ -206,13 +206,22 @@ static void fb_setvt() {
 		exit(1);
     }
 	
-	switch(fork()) {
+	//Get the pid of the fork
+	int newPid = fork();
+	switch(newPid) {
 		case 0:	
 			break;
 		case -1:
 			perror("fork");
 			exit(1);
 		default:
+			//Write the new pid to the splash.pid file
+			if(pid_file = open(absPid, O_RDWR | O_CREAT | O_TRUNC)) {
+				sprintf(processid,"%d", newPid);
+				lseek(pid_file, 0, SEEK_SET);
+				write(pid_file,processid,sizeof(processid));
+			}
+			close(pid_file);		
 			exit(0);
 	}
 
@@ -741,10 +750,10 @@ void gc() {
 	munmap(addr, mlength);
 	close(fd);
 	
-	fclose(pid_file);
+	close(pid_file);
 	if(child) {
-		unlink(absMem);		
-		unlink(absPid);
+		remove(absMem);		
+		remove(absPid);
 		rmdir("/run/splash");
 		close(fbfd);
 
@@ -864,13 +873,13 @@ void showProgressBar() {
 	}
 }
 
-void writeArguments(struct arguments_t *arguments) {
+int writeArguments(struct arguments_t *arguments) {
 	arguments_t *argument;
 	int x,y=0;
 	if(!addr) {
 		addr = mmap(NULL, mlength, prot, flags, fd, moffset); 
 		if(addr == 0) { 
-			exit(1);
+			return 1;
 		}
 	}
 	
@@ -886,7 +895,7 @@ void writeArguments(struct arguments_t *arguments) {
 	addr[y++] = '#';
 	msync(addr,sizeof(int),MS_SYNC|MS_INVALIDATE); 
 	if(munmap(addr, mlength) == -1) { 
-		exit(0);
+		return 1;
 	}
 }
 
@@ -897,7 +906,7 @@ struct arguments_t *readArguments() {
 	if(!addr) {
 		addr = mmap(NULL, mlength, prot, flags, fd, moffset); 
 		if(addr == 0) { 
-			exit(1);
+			return -1;
 		}
 	addr[0]='#'; 		
 	}
@@ -929,7 +938,10 @@ struct arguments_t *readArguments() {
 	return arguments;
 }
 
-void parseArguments(struct arguments_t *arguments) {
+int parseArguments(struct arguments_t *arguments) {
+	if((int)arguments == -1)
+		return 0;	
+
 	arguments_t *argument;
 	for(argument=arguments; argument != NULL; argument=(arguments_t*)(argument->hh.next)) {
 		switch(argument->id) {
@@ -966,7 +978,8 @@ void parseArguments(struct arguments_t *arguments) {
 				BARCHANGE=1;
 			break;
 			case 'e':
-				drawText(((vinfo.xres/2)+250), ((vinfo.yres/2)+85), FONT, FONTSIZE, MSGTXT, createColor16bit(0,0,0), 5, 1, 1);			
+				if(INITIALIZED)
+					drawText(((vinfo.xres/2)+250), ((vinfo.yres/2)+85), FONT, FONTSIZE, MSGTXT, createColor16bit(0,0,0), 5, 1, 1);			
 				MSGTXT=argument->value;
 				MSGCHANGE=1;
 			break;
@@ -984,12 +997,14 @@ void parseArguments(struct arguments_t *arguments) {
 				BLACK=0;
 			break;
 			case 'h':
-				drawText(((vinfo.xres/2)+250), ((vinfo.yres/2)+85), FONT, FONTSIZE, MSGTXT, createColor16bit(0,0,0), 5, 1, 1);						
+				if(INITIALIZED)
+					drawText(((vinfo.xres/2)+250), ((vinfo.yres/2)+85), FONT, FONTSIZE, MSGTXT, createColor16bit(0,0,0), 5, 1, 1);						
 				FONT=argument->value;
 				MSGCHANGE=1;
 			break;
 			case 'i':
-				drawText(((vinfo.xres/2)+250), ((vinfo.yres/2)+85), FONT, FONTSIZE, MSGTXT, createColor16bit(0,0,0), 5, 1, 1);			
+				if(INITIALIZED)
+					drawText(((vinfo.xres/2)+250), ((vinfo.yres/2)+85), FONT, FONTSIZE, MSGTXT, createColor16bit(0,0,0), 5, 1, 1);			
 				FONTSIZE=atoi(argument->value);
 				MSGCHANGE=1;
 			break;
@@ -1008,7 +1023,7 @@ void parseArguments(struct arguments_t *arguments) {
 				g_logging=1;
 				if(strlen(argument->value)>255)
 					continue;
-				if(!strcmp(argument->value, "")) 
+				if(strcmp(argument->value, "")) 
 					sprintf(g_logfile,"%s",argument->value);
 			break;
 		}
@@ -1052,25 +1067,33 @@ int main(int argc, char **argv) {
 	sprintf(absPid,"%s%s%s",PID,basename(argv[0]),".pid");
 	sprintf(absMem,"%s%s%s",MEMORY,basename(argv[0]),".dat");
 	LOG_PRINT("absPid %s", absPid);
-
-	if( ( opt = mkdir(PID, 0777) ) == 0 ) {
-                if( pid_file = fopen(absPid, "wx" ) ) {
-		        fprintf(pid_file, "%d", getpid());
-		        child=1;
-	        }        
-        } else 
-        if( opt == -1 ) {
-                if ( errno != EEXIST ) 
-                        exit(1);
-        }
-
+	
+	//Create splash data directory
+	mkdir(PID,0777);
+	
+	//Open the splash.pid file to check for an existing pid
+	if(pid_file = open(absPid, O_RDWR | O_CREAT)) {
+		read(pid_file, processid, 255);
+		//If the file is empty, create a new process
+		if(!atoi(processid)) {
+			child=1;
+		} else {
+			//Check if the process is running
+			kill(atoi(processid), 0);
+			//If not, create a new process
+			if(errno == ESRCH) {
+				child = 1;
+			}
+		}
+	}
+	close(pid_file);
 
 	//Open memory file
 	fd = open(absMem, O_RDWR | O_CREAT | O_TRUNC);
-	write(fd,"0",1);
 	if(fd == 0) { 
 		exit(1);
-	} 
+	} 	
+	write(fd,"0",1);
 	if(lseek(fd, mlength - 1, SEEK_SET) == -1) { 
 		exit(1);
 	}
@@ -1087,6 +1110,8 @@ int main(int argc, char **argv) {
 			argument->id=opt;
 			if(optarg) {
 				strcpy(argument->value,optarg);
+			} else {
+				strcpy(argument->value,"");
 			}
 			HASH_ADD_INT(arguments,id,argument);
 		}
