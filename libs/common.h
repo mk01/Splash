@@ -17,19 +17,36 @@ You should have received a copy of the GNU General Public License along
 with Splash. If not, see <http://www.gnu.org/licenses/>
 */
 
-#ifndef _CONFIG_H_
-#define _CONFIG_H_
+#ifndef _COMMON_H_
+#define _COMMON_H_
 
-#define PORT 				9999
-#define MAX_CLIENTS			30
-#define BUFFER_SIZE			1025
-#define BIG_BUFFER_SIZE		1025
-#define ZINDEXES			4
-#define DEFAULT_FB			"/dev/fb0"
+#include <syslog.h>
 
-#define PID_FILE			"/var/run/splash-daemon.pid"
-#define LOG_FILE			"/var/log/splash-daemon.log"
+#include "log.h"
 
 char *progname;
+int filelog;
+int shelllog;
+int loglevel;
+char debug_log[128];
+
+void logmarkup(void);
+
+#ifdef DEBUG
+
+void debug_free(void **addr, const char *file, int line);
+const char *debug_filename(const char *file);
+void *debug_malloc(size_t len, const char *file, int line);
+void *debug_realloc(void *addr, size_t len, const char *file, int line);
+
+#define sfree(x) debug_free(x, __FILE__, __LINE__);
+#define malloc(x) debug_malloc(x, __FILE__, __LINE__);
+#define realloc(y, x) debug_realloc(y, x, __FILE__, __LINE__);
+
+#else
+
+void sfree(void **addr);
+
+#endif
 
 #endif

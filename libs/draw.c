@@ -20,132 +20,169 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #include <stdlib.h>
 #include <signal.h>
 #include <stdio.h>
+#include <math.h>
 
 #include <jpeglib.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
+#include "common.h"
 #include "fb.h"
 #include "log.h"
 #include "draw.h"
 #include "fcache.h"
+#include "lodepng.h"
 
 unsigned short draw_color_16bit(unsigned short r, unsigned short g, unsigned short b) {
 	return (unsigned short)((r / 8) << 11) | (unsigned short)((g / 4) << 5) | (b / 8);
 }
 
-void draw_rectangle_filled(int x, int y, int width, int height, unsigned short color) {
+void draw_rectangle_filled(int x, int y, int z, int width, int height, unsigned short color) {
 	int a=0, b=0;
 	
 	for(a = x; a < x+width; a++) {
 		for(b = y; b < y+height; b++) {
-			fb_put_pixel(a, b, color);
+			fb_put_pixel(a, b, z, color);
 		} 
 	}
 } 
 
-void draw_rectangle(int x, int y, int width, int height, int border, unsigned short color) {
+void draw_rectangle(int x, int y, int z, int width, int height, int border, unsigned short color) {
 	int a=0, b=0;
 	
 	for(a = x; a < x+width; a++) {
 		for(b = y; b < y+height; b++) {
 			if((a<(x+border)) || (a>((x+width)-border)) || (b<(y+border)) || (b>((y+height)-border))) {
-				fb_put_pixel(a, b, color);
+				fb_put_pixel(a, b, z, color);
 			}
 		}
 	}
 }
 
-void draw_line(int x2, int y2, int x1, int y1, unsigned short color) {
+void draw_line(int x2, int y2, int x1, int y1, int z, int thickness, unsigned short color) {
 	const int dx = abs(x1-x2);
 	const int dy = abs(y1-y2);
-	int const1, const2, p, x, y, step;
+	int const1, const2, p, x, y, step, a;
 
 	if(dx >= dy) {
-		const1 = 2 * dy;
-		const2 = 2 * (dy - dx);
-		p = 2 * dy - dx;
-		x = min(x1,x2);
-		y = (x1 < x2) ? (y1) : (y2);
-		step = (y1 > y2) ? (1) : (-1);
-		fb_put_pixel(x, y, color);
-		while (x < max(x1,x2)) {
-			if(p < 0) {
-				p += const1;
-			} else {
-				y += step;
-				p += const2;
+		for(a=0;a<thickness;a++) {
+			const1 = 2 * dy;
+			const2 = 2 * (dy - dx);
+			p = 2 * dy - dx;
+			x = min(x1, x2);
+			y = (x1 < x2) ? (y1) : (y2);
+			step = (y1 > y2) ? (1) : (-1);
+			fb_put_pixel(x, y, z, color);
+			while (x < max(x1, x2)) {
+				if(p < 0) {
+					p += const1;
+				} else {
+					y += step;
+					p += const2;
+				}
+			fb_put_pixel(++x, y+a, z, color);
 			}
-        fb_put_pixel(++x, y, color);
 		}
 	} else {
-		const1 = 2 * dx;
-		const2 = 2 * (dx - dy);
-		p = 2 * dx - dy;
-		y = min(y1,y2);
-		x = (y1 < y2) ? (x1) : (x2);
-		step = (x1 > x2) ? (1) : (-1);
-		fb_put_pixel(x, y, color);
-		while(y < max(y1,y2)) {
-			if(p < 0)
-				p += const1;
-			else {
-				x += step;
-				p += const2;
+		for(a=0;a<thickness;a++) {
+			const1 = 2 * dx;
+			const2 = 2 * (dx - dy);
+			p = 2 * dx - dy;
+			y = min(y1,y2);
+			x = (y1 < y2) ? (x1) : (x2);
+			step = (x1 > x2) ? (1) : (-1);
+			fb_put_pixel(x, y, 0, color);
+			while(y < max(y1,y2)) {
+				if(p < 0)
+					p += const1;
+				else {
+					x += step;
+					p += const2;
+				}
+			fb_put_pixel(x+a, ++y, z, color);
 			}
-		fb_put_pixel(x, ++y, color);
 		}
 	}
 }
 
 
-void draw_circle_filled(int xc, int yc, int r, unsigned short color) {
-	int x = 0, y = 0, p = 0, z = 0;
+void draw_circle_filled(int xc, int yc, int z, int r, unsigned short color) {
+	int y, x;
 	xc+=r;
 	yc+=r;
+	for(y=r*-1; y<=r; y++) {
+		for(x=r*-1; x<=r; x++) {
+			if((x*x)+(y*y) <= r*r) {
+				fb_put_pixel(xc+x, yc+y, z, color);
+			}
+		}
+	}
+}
+
+void draw_circle(int xc, int yc, int z, int r, int border, unsigned short color) {
+	int y, x;
+	xc+=r;
+	yc+=r;
+	for(y=r*-1; y<=r; y++) {
+		for(x=r*-1; x<=r; x++) {
+			if(((x*x)+(y*y) >= ((r-border)*(r-border))) && ((x*x)+(y*y) <= (r*r))) {
+				fb_put_pixel(xc+x, yc+y, z, color);
+			}
+		}
+	}
+}
+
+short jpg_get_height(char *filename) {
+	int size;
+
+	struct jpeg_decompress_struct jpegInfo;
+	struct jpeg_error_mgr jpegErr;
 	
-	x = 0, y = 0;
-	y = (r-z);
-	p = 3 - 2 * (r-z);
-	while (x <= y) {
-		draw_line(xc - x, yc - y, xc + x, yc + y, color);
-		draw_line(xc + x, yc - y, xc - x, yc + y, color);
-		draw_line(xc - y, yc - x, xc + y, yc + x, color);
-		draw_line(xc - y, yc + x, xc + y, yc - x, color);
-		if (p < 0)
-			p += 4 * x++ + 6;
-		else
-			p += 4 * (x++ - y--) + 10;
-	}
-}
-
-void draw_circle(int xc, int yc, int r, int border, unsigned short color) {
-	int x = 0, y = 0, p = 0, z = 0;
-	xc+=r;
-	yc+=r;
-	for(z = 0; z < border; z++) {
-		x = 0, y = 0;
-		y = (r-z);
-		p = 3 - 2 * (r-z);
-		while (x <= y) {
-			fb_put_pixel(xc + x, yc + y, color);
-			fb_put_pixel(xc - x, yc + y, color);
-			fb_put_pixel(xc + x, yc - y, color);
-			fb_put_pixel(xc - x, yc - y, color);
-			fb_put_pixel(xc + y, yc + x, color);
-			fb_put_pixel(xc - y, yc + x, color);
-			fb_put_pixel(xc + y, yc - x, color);
-			fb_put_pixel(xc - y, yc - x, color);
-			if (p < 0)
-				p += 4 * x++ + 6;
-			else
-				p += 4 * (x++ - y--) + 10;
+	if(fcache_get_size(filename, &size) == -1) {
+		if(fcache_add(filename) == -1) {
+			logprintf(LOG_ERR, "could not cache %s", filename);
 		}
 	}
+	
+	if(fcache_get_size(filename, &size) > -1) {
+		jpegInfo.err = jpeg_std_error(&jpegErr);
+		jpeg_create_decompress(&jpegInfo);
+		jpeg_mem_src(&jpegInfo, fcache_get_bytes(filename), (long unsigned int)size);
+		jpeg_read_header(&jpegInfo, TRUE);
+		
+		jpeg_start_decompress(&jpegInfo);
+		return (short)jpegInfo.output_height;
+	}
+	return -1;
 }
 
-void draw_jpg(int xc, int yc, char *filename) {
+short jpg_get_width(char *filename) {
+	int size;
+
+	struct jpeg_decompress_struct jpegInfo;
+	struct jpeg_error_mgr jpegErr;
+	
+	if(fcache_get_size(filename, &size) == -1) {
+		if(fcache_add(filename) == -1) {
+			logprintf(LOG_ERR, "could not cache %s", filename);
+		}
+	}
+	
+	if(fcache_get_size(filename, &size) > -1) {
+		jpegInfo.err = jpeg_std_error(&jpegErr);
+		jpeg_create_decompress(&jpegInfo);
+		jpeg_mem_src(&jpegInfo, fcache_get_bytes(filename), (long unsigned int)size);
+		jpeg_read_header(&jpegInfo, TRUE);
+		
+		jpeg_start_decompress(&jpegInfo);
+		return (short)jpegInfo.output_width;
+	}
+	return -1;
+}
+
+void draw_jpg(int xc, int yc, int z, char *filename) {
 	unsigned char *raw_image = NULL;
-	int id;
-	unsigned long size;
+	int size;
 	unsigned long location = 0;
 	int i = 0, x = 0;
 	unsigned char r, g, b;
@@ -154,19 +191,18 @@ void draw_jpg(int xc, int yc, char *filename) {
 	struct jpeg_error_mgr jpegErr;
 	int line;
 	
-	if(fcache_get_id(filename, &id) == -1) {
-		if((id=fcache_add(filename)) == -1) {
+	if(fcache_get_size(filename, &size) == -1) {
+		if(fcache_add(filename) == -1) {
 			logprintf(LOG_ERR, "could not cache %s", filename);
 		}
 	}
 	
-	if(id > -1) {
-		fcache_get_size(filename, &size);
-			
+	if(fcache_get_size(filename, &size) > -1) {
+		
 		JSAMPROW row_pointer[1];
 		jpegInfo.err = jpeg_std_error(&jpegErr);
 		jpeg_create_decompress(&jpegInfo);
-		jpeg_mem_src(&jpegInfo, fcache_get_bytes(id), size);
+		jpeg_mem_src(&jpegInfo, fcache_get_bytes(filename), (long unsigned int)size);
 		jpeg_read_header(&jpegInfo, TRUE);
 		
 		jpeg_start_decompress(&jpegInfo);
@@ -174,53 +210,176 @@ void draw_jpg(int xc, int yc, char *filename) {
 		raw_image = (unsigned char*)malloc((JDIMENSION)jpegInfo.output_width*(JDIMENSION)jpegInfo.output_height*(size_t)jpegInfo.num_components);
 		row_pointer[0] = (unsigned char *)malloc((JDIMENSION)jpegInfo.output_width*(size_t)jpegInfo.num_components);
 		
-
-		while(jpegInfo.output_scanline < jpegInfo.image_height) {
-			jpeg_read_scanlines(&jpegInfo, row_pointer, 1);
-			
-			for(i=0; i<(JDIMENSION)jpegInfo.image_width*(size_t)jpegInfo.num_components; i++) {
-				raw_image[location++] = row_pointer[0][i];
+		if((yc+(int)jpegInfo.image_height) <= fb_height() && (xc+(int)jpegInfo.image_width) <= fb_width()) {
+		
+			while(jpegInfo.output_scanline < jpegInfo.image_height) {
+				jpeg_read_scanlines(&jpegInfo, row_pointer, 1);
+				
+				for(i=0; i<(JDIMENSION)jpegInfo.image_width*(size_t)jpegInfo.num_components; i++) {
+					raw_image[location++] = row_pointer[0][i];
+				}
 			}
-		}
 
-		for(line = (int)jpegInfo.image_height-1; line >= 0; line--) {
-			for(x=0; x < jpegInfo.image_width; x++) {
-				b = *(raw_image+(x+line*(int)jpegInfo.image_width)*jpegInfo.num_components+2);
-				g = *(raw_image+(x+line*(int)jpegInfo.image_width)*jpegInfo.num_components+1);
-				r = *(raw_image+(x+line*(int)jpegInfo.image_width)*jpegInfo.num_components+0);
+			for(line = (int)jpegInfo.image_height-1; line >= 0; line--) {
+				for(x=0; x < jpegInfo.image_width; x++) {
+					b = *(raw_image+(x+line*(int)jpegInfo.image_width)*jpegInfo.num_components+2);
+					g = *(raw_image+(x+line*(int)jpegInfo.image_width)*jpegInfo.num_components+1);
+					r = *(raw_image+(x+line*(int)jpegInfo.image_width)*jpegInfo.num_components+0);
 
-				fb_put_pixel(x+xc, line+yc, draw_color_16bit((((int)r & 0xFF) << 0), (((int)g & 0xFF) << 0), (((int)b & 0xFF) << 0)));
+					fb_put_pixel(x+xc, line+yc, z, draw_color_16bit((((int)r & 0xFF) << 0), (((int)g & 0xFF) << 0), (((int)b & 0xFF) << 0)));
+				}
 			}
-		}
 
-		jpeg_finish_decompress(&jpegInfo);
-		jpeg_destroy_decompress(&jpegInfo);
-		free(row_pointer[0]);
-		free(raw_image);
+			jpeg_finish_decompress(&jpegInfo);
+			jpeg_destroy_decompress(&jpegInfo);
+			free(row_pointer[0]);
+			free(raw_image);
+		} else {
+			logprintf(LOG_ERR, "image %s to large for its supposed placing", filename);
+		}
 	}
 }
 
-void draw_txt(double xc, double yc, char *font, FT_UInt size, char *text, unsigned short int color, double spacing, int decoration, int align) {
-	int id = -1, y = 0, x = 0, n = 0;
-	double z = 0;
-	int fontHeight=0, fontWidth=0;
-	unsigned long fsize; 
+short png_get_width(char *filename) {
+	int width, height;
+	unsigned char *image;
+	int size;
+
+	if(fcache_get_size(filename, &size) == -1) {
+		if(fcache_add(filename) == -1) {
+			logprintf(LOG_ERR, "could not cache %s", filename);
+		}
+	}
 	
-	if(fcache_get_id(font, &id) == -1) {
-		if((id=fcache_add(font)) == -1) {
+	if(fcache_get_size(filename, &size) > -1) {	
+		lodepng_decode32(&image, (unsigned int *)&width, (unsigned int *)&height, fcache_get_bytes(filename), (size_t)size);
+		sfree((void *)&image);
+		return (short)width;
+	}
+	return -1;
+}
+
+short png_get_height(char *filename) {
+	int width, height;
+	unsigned char *image;
+	int size;
+
+	if(fcache_get_size(filename, &size) == -1) {
+		if(fcache_add(filename) == -1) {
+			logprintf(LOG_ERR, "could not cache %s", filename);
+		}
+	}
+	
+	if(fcache_get_size(filename, &size) > -1) {	
+		lodepng_decode32(&image, (unsigned int *)&width, (unsigned int *)&height, fcache_get_bytes(filename), (size_t)size);
+		sfree((void *)&image);
+		return (short)height;
+	}
+	return -1;
+}
+
+void draw_png(int xc, int yc, int z, char *filename) {
+	int width, height;
+	unsigned char *image;
+	int size, x, y;
+
+	if(fcache_get_size(filename, &size) == -1) {
+		if(fcache_add(filename) == -1) {
+			logprintf(LOG_ERR, "could not cache %s", filename);
+		}
+	}
+	
+	if(fcache_get_size(filename, &size) > -1) {	
+		lodepng_decode32(&image, (unsigned int *)&width, (unsigned int *)&height, fcache_get_bytes(filename), (size_t)size);
+	  
+		for(y = 0;y<height; y++) {
+			for(x = 0;x<width; x++) {
+				int checkerColor;
+				int r, g, b, a ;
+
+				r = image[4 * y * width + 4 * x + 0];
+				g = image[4 * y * width + 4 * x + 1];
+				b = image[4 * y * width + 4 * x + 2];
+				a = image[4 * y * width + 4 * x + 3];
+				
+				checkerColor = 191 + 64 * (((x / 16) % 2) == ((y / 16) % 2));
+				r = (a * r + (255 - a) * checkerColor) / 255;
+				g = (a * g + (255 - a) * checkerColor) / 255;
+				b = (a * b + (255 - a) * checkerColor) / 255;
+				if(a != 0) {
+					fb_put_pixel(x+xc, y+yc, z, draw_color_16bit((unsigned short)r, (unsigned short)g, (unsigned short)b));
+				}
+			}
+		}
+		sfree((void *)&image);
+	}
+}
+
+short txt_get_width(char *font, char *text, FT_UInt size, double spacing, int decoration, int align) {
+	int n = 0;
+	int fontWidth = 0;
+	int totalWidth = 0;
+	int fsize; 
+
+	if(fcache_get_size(font, &fsize) != 0) {
+		if(fcache_add(font) != 0) {
 			logprintf(LOG_ERR, "could not cache %s", font);
 		}
 	}
 
-	if(id > -1) {
-		fcache_get_size(font, &fsize);
+	if(fcache_get_size(font, &fsize) > -1) {
+	
+		FT_Library library;
+		FT_Face face;
+
+		FT_Init_FreeType(&library);
+		FT_New_Memory_Face(library, fcache_get_bytes(font), (FT_Long)fsize, 0, &face);
+		FT_Set_Char_Size(face, (FT_F26Dot6)size*64, 0, 72, 0);
+		FT_Set_Pixel_Sizes(face, 0, size);
+		FT_UInt glyph_index;
+		
+		for(n=0;n<strlen(text);n++) {
+			glyph_index = FT_Get_Char_Index(face, text[n]);
+			FT_Load_Glyph(face, glyph_index, 0);
+			FT_Render_Glyph(face->glyph, ft_render_mode_normal);
+			if(face->glyph->bitmap.width > fontWidth) {
+				fontWidth = face->glyph->bitmap.width;
+			}
+		}
+		for(n=0;n<=(strlen(text)-1);n++) {
+			if(text[n]==' ') {
+				totalWidth += (int)(fontWidth*0.75);
+			} else {		
+				glyph_index = FT_Get_Char_Index(face, text[n]);
+				FT_Load_Glyph(face, glyph_index, 0);	
+				FT_Render_Glyph(face->glyph, ft_render_mode_normal);
+				totalWidth += (int)spacing+face->glyph->bitmap.width;
+			}
+		}
+		return (short)totalWidth;
+	}
+	return -1;
+}
+
+short txt_get_height(char *font, char *text, FT_UInt size, double spacing, int decoration, int align) {
+	int n = 0;
+	int fontHeight = 0;
+	int fsize; 
+	
+	if(fcache_get_size(font, &fsize) == -1) {
+		if(fcache_add(font) == -1) {
+			logprintf(LOG_ERR, "could not cache %s", font);
+		}
+	}
+	
+	if(fcache_get_size(font, &fsize) > -1) {
 	
 		FT_Library library;
 		FT_Face face;
 		FT_Glyph_Metrics *metrics;
 
 		FT_Init_FreeType(&library);
-		FT_New_Memory_Face(library, fcache_get_bytes(id), (FT_Long)fsize, 0, &face);
+		FT_New_Memory_Face(library, fcache_get_bytes(font), (FT_Long)fsize, 0, &face);
 		FT_Set_Char_Size(face, (FT_F26Dot6)size*64, 0, 72, 0);
 		FT_Set_Pixel_Sizes(face, 0, size);
 		FT_UInt glyph_index;
@@ -231,65 +390,184 @@ void draw_txt(double xc, double yc, char *font, FT_UInt size, char *text, unsign
 			metrics = &face->glyph->metrics;
 			FT_Render_Glyph(face->glyph, ft_render_mode_normal);
 			if((metrics->horiBearingY/64) > fontHeight) {
-				fontHeight=(metrics->horiBearingY/64);
-			}
-			if(face->glyph->bitmap.width > fontWidth) {
-				fontWidth=face->glyph->bitmap.width;
+				fontHeight = (metrics->horiBearingY/64);
 			}
 		}
-		yc+=fontHeight;
-		if(align == ALIGN_LEFT) {
-			for(n=((int)strlen(text)-1);n>=0;n--) {
-				if(text[n]==' ') {
-					xc -= fontWidth;
-				} else {		
-					glyph_index = FT_Get_Char_Index(face, text[n]);
-					FT_Load_Glyph(face, glyph_index, 0);
-					metrics = &face->glyph->metrics;	
-					FT_Render_Glyph(face->glyph, ft_render_mode_normal);
-					if(decoration==1) {
-						z=face->glyph->bitmap.rows*0.25;
-					}
-					xc -= face->glyph->bitmap.width+spacing;
-					for(y=0;y<face->glyph->bitmap.rows;y++) {
-						for (x=0;x<face->glyph->bitmap.width;x++) {
-							if(face->glyph->bitmap.buffer[y*face->glyph->bitmap.width + x] > 0) {
-								fb_put_pixel((int)(x+xc+z), (int)(y+yc-(metrics->horiBearingY/64)),color);	
-							}
-						}
-						if(decoration==1) {			
-							z-=0.25;
-						}
-					}
-				}
+		return (short)fontHeight;
+	}
+	return -1;
+}
+
+void draw_rmtxt(double xc, double yc, int z, char *font, FT_UInt size, char *text, unsigned short int color, double spacing, int decoration, int align) {
+	int y = 0, x = 0, n = 0;
+	double a = 0;
+	int fontHeight = 0, fontWidth = 0;
+	int totalWidth = 0;
+	int fsize; 
+	
+	if(fcache_get_size(font, &fsize) == -1) {
+		if(fcache_add(font) == -1) {
+			logprintf(LOG_ERR, "could not cache %s", font);
+		}
+	}
+	
+	if(fcache_get_size(font, &fsize) > -1) {
+	
+		FT_Library library;
+		FT_Face face;
+		FT_Glyph_Metrics *metrics;
+
+		FT_Init_FreeType(&library);
+		FT_New_Memory_Face(library, fcache_get_bytes(font), (FT_Long)fsize, 0, &face);
+		FT_Set_Char_Size(face, (FT_F26Dot6)size*64, 0, 72, 0);
+		FT_Set_Pixel_Sizes(face, 0, size);
+		FT_UInt glyph_index;
+		
+		for(n=0;n<strlen(text);n++) {
+			glyph_index = FT_Get_Char_Index(face, text[n]);
+			FT_Load_Glyph(face, glyph_index, 0);
+			metrics = &face->glyph->metrics;
+			FT_Render_Glyph(face->glyph, ft_render_mode_normal);
+			if((metrics->horiBearingY/64) > fontHeight) {
+				fontHeight = (metrics->horiBearingY/64);
 			}
-		} else {
-			for(n=0;n<=strlen(text);n++) {
-				if(text[n]==' ') {
-					xc += fontWidth;
-				} else {
-					glyph_index = FT_Get_Char_Index(face, text[n]);
-					FT_Load_Glyph(face, glyph_index, 0);
-					metrics = &face->glyph->metrics;	
-					FT_Render_Glyph(face->glyph, ft_render_mode_normal);
-					if(decoration==1) {
-						z=face->glyph->bitmap.rows*0.25;
-					}
-					for(y=0;y<face->glyph->bitmap.rows;y++) {
-						for (x=0;x<face->glyph->bitmap.width;x++) {
-							if(face->glyph->bitmap.buffer[y*face->glyph->bitmap.width + x] > 0) {
-								fb_put_pixel((int)(x+xc+z), (int)(y+yc-(metrics->horiBearingY/64)), color);	
-							}
-						}
-						if(decoration==ITALIC) {			
-							z-=0.25;
-						}
-					}
-					xc -= face->glyph->bitmap.width-z+spacing;
+			if(face->glyph->bitmap.width > fontWidth) {
+				fontWidth = face->glyph->bitmap.width;
+			}
+		}
+		for(n=0;n<=(strlen(text)-1);n++) {
+			if(text[n]==' ') {
+				totalWidth += (int)(fontWidth*0.75);
+			} else {		
+				glyph_index = FT_Get_Char_Index(face, text[n]);
+				FT_Load_Glyph(face, glyph_index, 0);
+				metrics = &face->glyph->metrics;	
+				FT_Render_Glyph(face->glyph, ft_render_mode_normal);
+				if(decoration==ITALIC) {
+					a=face->glyph->bitmap.rows*0.25;
 				}
+				totalWidth += (int)spacing+face->glyph->bitmap.width;
+			}
+		}
+		
+		yc+=(fontHeight/2);
+		if(align == ALIGN_RIGHT) {
+			xc -= totalWidth;
+		} else if(align == ALIGN_CENTER) {
+			xc -= (totalWidth/2);
+		}		
+		for(n=0;n<=(strlen(text)-1);n++) {
+			if(text[n]==' ') {
+				xc += (int)(fontWidth*0.75);
+			} else {		
+				glyph_index = FT_Get_Char_Index(face, text[n]);
+				FT_Load_Glyph(face, glyph_index, 0);
+				metrics = &face->glyph->metrics;	
+				FT_Render_Glyph(face->glyph, ft_render_mode_normal);
+				if(decoration==ITALIC) {
+					a=face->glyph->bitmap.rows*0.25;
+				}
+				for(y=0;y<face->glyph->bitmap.rows;y++) {
+					for (x=0;x<face->glyph->bitmap.width;x++) {
+						if(face->glyph->bitmap.buffer[y*face->glyph->bitmap.width + x] > 0) {
+							fb_rm_pixel((int)(x+xc+a), (int)(y+yc-(metrics->horiBearingY/64)), z, color);	
+						}
+					}
+					if(decoration==ITALIC) {			
+						a-=0.25;
+					}
+				}
+				xc += spacing+face->glyph->bitmap.width;
 			}
 		}
 	FT_Done_Face(face);
-	FT_Done_FreeType(library);	
+	FT_Done_FreeType(library);
+	}
+}
+
+void draw_txt(double xc, double yc, int z, char *font, FT_UInt size, char *text, unsigned short int color, double spacing, int decoration, int align) {
+	int y = 0, x = 0, n = 0;
+	double a = 0;
+	int fontHeight = 0, fontWidth = 0;
+	int totalWidth = 0;
+	int fsize; 
+	
+	if(fcache_get_size(font, &fsize) == -1) {
+		if(fcache_add(font) == -1) {
+			logprintf(LOG_ERR, "could not cache %s", font);
+		}
+	}
+	
+	if(fcache_get_size(font, &fsize) > -1) {
+	
+		FT_Library library;
+		FT_Face face;
+		FT_Glyph_Metrics *metrics;
+
+		FT_Init_FreeType(&library);
+		FT_New_Memory_Face(library, fcache_get_bytes(font), (FT_Long)fsize, 0, &face);
+		FT_Set_Char_Size(face, (FT_F26Dot6)size*64, 0, 72, 0);
+		FT_Set_Pixel_Sizes(face, 0, size);
+		FT_UInt glyph_index;
+		
+		for(n=0;n<strlen(text);n++) {
+			glyph_index = FT_Get_Char_Index(face, text[n]);
+			FT_Load_Glyph(face, glyph_index, 0);
+			metrics = &face->glyph->metrics;
+			FT_Render_Glyph(face->glyph, ft_render_mode_normal);
+			if((metrics->horiBearingY/64) > fontHeight) {
+				fontHeight = (metrics->horiBearingY/64);
+			}
+			if(face->glyph->bitmap.width > fontWidth) {
+				fontWidth = face->glyph->bitmap.width;
+			}
+		}
+		for(n=0;n<=(strlen(text)-1);n++) {
+			if(text[n]==' ') {
+				totalWidth += (int)(fontWidth*0.75);
+			} else {		
+				glyph_index = FT_Get_Char_Index(face, text[n]);
+				FT_Load_Glyph(face, glyph_index, 0);
+				metrics = &face->glyph->metrics;	
+				FT_Render_Glyph(face->glyph, ft_render_mode_normal);
+				if(decoration==ITALIC) {
+					a=face->glyph->bitmap.rows*0.25;
+				}
+				totalWidth += (int)spacing+face->glyph->bitmap.width;
+			}
+		}
+		
+		yc+=(fontHeight/2);
+		if(align == ALIGN_RIGHT) {
+			xc -= totalWidth;
+		} else if(align == ALIGN_CENTER) {
+			xc -= (totalWidth/2);
+		}		
+		for(n=0;n<=(strlen(text)-1);n++) {
+			if(text[n]==' ') {
+				xc += (int)(fontWidth*0.75);
+			} else {		
+				glyph_index = FT_Get_Char_Index(face, text[n]);
+				FT_Load_Glyph(face, glyph_index, 0);
+				metrics = &face->glyph->metrics;	
+				FT_Render_Glyph(face->glyph, ft_render_mode_normal);
+				if(decoration==ITALIC) {
+					a=face->glyph->bitmap.rows*0.25;
+				}
+				for(y=0;y<face->glyph->bitmap.rows;y++) {
+					for (x=0;x<face->glyph->bitmap.width;x++) {
+						if(face->glyph->bitmap.buffer[y*face->glyph->bitmap.width + x] > 0) {
+							fb_put_pixel((int)(x+xc+a), (int)(y+yc-(metrics->horiBearingY/64)), z, color);	
+						}
+					}
+					if(decoration==ITALIC) {			
+						a-=0.25;
+					}
+				}
+				xc += spacing+face->glyph->bitmap.width;
+			}
+		}
+	FT_Done_Face(face);
+	FT_Done_FreeType(library);
 	}
 }

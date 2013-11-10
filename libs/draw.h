@@ -29,16 +29,25 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 
 #define ALIGN_LEFT 		0
 #define ALIGN_RIGHT 	1
+#define ALIGN_CENTER 	2
 #define NONE 			0
 #define ITALIC 			1
 
 unsigned short draw_color_16bit(unsigned short r, unsigned short g, unsigned short b);
-void draw_rectangle_filled(int x, int y, int width, int height, unsigned short int color);
-void draw_rectangle(int x, int y, int width, int height, int border, unsigned short int color);
-void draw_line(int x2, int y2, int x1, int y1, unsigned short int color);
-void draw_circle_filled(int xc, int yc, int r, unsigned short int color);
-void draw_circle(int xc, int yc, int r, int border, unsigned short int color);
-void draw_jpg(int xc, int yc, char *filename);
-void draw_txt(double xc, double yc, char *font, FT_UInt size, char *text, unsigned short int color, double spacing, int decoration, int align);
+void draw_rectangle_filled(int x, int y, int z, int width, int height, unsigned short int color);
+void draw_rectangle(int x, int y, int z, int width, int height, int border, unsigned short int color);
+void draw_line(int x2, int y2, int x1, int y1, int z, int thickness, unsigned short int color);
+void draw_circle_filled(int xc, int yc, int z, int r, unsigned short int color);
+void draw_circle(int xc, int yc, int z, int r, int border, unsigned short int color);
+short jpg_get_height(char *filename);
+short jpg_get_width(char *filename);
+short png_get_height(char *filename);
+short png_get_width(char *filename);
+short txt_get_width(char *font, char *txt, FT_UInt size, double spacing, int decoration, int align);
+short txt_get_height(char *font, char *txt, FT_UInt size, double spacing, int decoration, int align);
+void draw_jpg(int xc, int yc, int z, char *filename);
+void draw_png(int xc, int yc, int z, char *filename);
+void draw_txt(double xc, double yc, int z, char *font, FT_UInt size, char *text, unsigned short int color, double spacing, int decoration, int align);
+void draw_rmtxt(double xc, double yc, int z, char *font, FT_UInt size, char *text, unsigned short int color, double spacing, int decoration, int align);
 
 #endif

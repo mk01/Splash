@@ -30,8 +30,11 @@ void fb_clear_screen(void);
 void fb_init(void);
 int fb_gc(void);
 unsigned long getLocation(int x, int y);
-void fb_put_pixel(int x, int y, unsigned short int color);
+void fb_put_pixel(int x, int y, int z, unsigned short int color);
+void fb_rm_pixel(int x, int y, int z, unsigned short int color);
 unsigned long fb_width2px(int i);
 unsigned long fb_height2px(int i);
+unsigned short fb_width(void);
+unsigned short fb_height(void);
 
 #endif

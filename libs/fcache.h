@@ -21,17 +21,17 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #define _FCACHE_H_
 
 typedef struct fcache_t {
-	int id;
-	char name[255];
-	unsigned long size;
+	char *name;
+	int size;
+	unsigned char *bytes;
 	struct fcache_t *next;
 } fcaches_t;
 
 struct fcache_t *fcache;
 
+int fcache_gc(void);
 int fcache_add(char *filename);
-short fcache_get_id(char *filename, int *out);
-short fcache_get_size(char *filename, unsigned long *out);
-unsigned char *fcache_get_bytes(int filename);
+short fcache_get_size(char *filename, int *out);
+unsigned char *fcache_get_bytes(char *filename);
 
 #endif

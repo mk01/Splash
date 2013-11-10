@@ -23,6 +23,7 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #include <setjmp.h>
 
 #include "gc.h"
+#include "common.h"
 
 static sigjmp_buf gc_cleanup;
 
@@ -34,32 +35,39 @@ void gc_handler(int sig) {
     siglongjmp(gc_cleanup, sig);
 }
 
-/* Removed function from GC */
-void gc_detach(int (*fp)(void)) {
-	unsigned i;
-
-	for(i=0; i<gc.nr; ++i) {
-		if(gc.listeners[i] == fp) {
-			gc.nr--;
-			gc.listeners[i] = gc.listeners[gc.nr];
-		}
-	}
-}
-
 /* Add function to gc */
 void gc_attach(int (*fp)(void)) {
-	gc_detach(fp);
-	gc.listeners[gc.nr++] = fp;
+	struct collectors_t *gnode = malloc(sizeof(struct collectors_t));
+	gnode->listener = fp;
+	gnode->next = gc;
+	gc = gnode;
+}
+
+void gc_clear(void) {
+	struct collectors_t *tmp = gc;
+	while(gc) {
+		tmp = gc;
+		gc = gc->next;
+		sfree((void *)&tmp);
+	}
+	sfree((void *)&gc);
 }
 
 /* Run the GC manually */
 int gc_run(void) {
-    unsigned int i, s;
-	for(i=0; i<gc.nr; ++i) {
-		if(gc.listeners[i]() != 0) {
+    unsigned int s;
+	struct collectors_t *tmp = gc;
+
+	while(gc) {
+		tmp = gc;
+		if(gc->listener() != 0) {
 			s=1;
 		}
+		gc = gc->next;
+		sfree((void *)&tmp);
 	}
+	sfree((void *)&gc);
+	
 	if(s)
 		return EXIT_FAILURE;
 	else
@@ -84,6 +92,7 @@ void gc_catch(void) {
     sigaction(SIGBUS,  &act, &old);
     sigaction(SIGILL,  &act, &old);
     sigaction(SIGSEGV, &act, &old);
+	sigaction(SIGFPE,  &act, &old);	
 
     if(sigsetjmp(gc_cleanup, 0) == 0)
 		return;

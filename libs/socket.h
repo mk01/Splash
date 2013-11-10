@@ -15,8 +15,6 @@ details.
 
 You should have received a copy of the GNU General Public License along
 with Splash. If not, see <http://www.gnu.org/licenses/>
-
-Various functions used in Splash are derived from fbi (Gerd Hoffmann <gerd@kraxel.org>)
 */
 
 #ifndef _SOCKETS_H_
@@ -24,13 +22,11 @@ Various functions used in Splash are derived from fbi (Gerd Hoffmann <gerd@kraxe
 
 #include "config.h"
 
-typedef struct socket_callback_t socket_callback_t;
-
-struct socket_callback_t {
+typedef struct socket_callback_t {
     void (*client_connected_callback)(int);
     void (*client_disconnected_callback)(int);
     void (*client_data_callback)(int, char*);
-};
+} socket_callback_t;
 
 int serverSocket;
 int clientSocket;
@@ -44,7 +40,8 @@ void socket_write(int sockfd, const char *msg, ...);
 void socket_write_big(int sockfd, const char *msg, ...);
 char *socket_read(int sockfd);
 char *socket_read_big(int sockfd);
-int socket_msgcmp(char *a, char *b);
-void *wait_for_data(void *param);
+void *socket_wait(void *param);
+int socket_check_whitelist(char *ip);
+int socket_gc(void);
 
 #endif

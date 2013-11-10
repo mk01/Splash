@@ -25,62 +25,68 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #include <sys/stat.h>
 
 #include "fcache.h"
+#include "common.h"
 #include "log.h"
+#include "gc.h"
 
-int fcache_nr_files = 0;
-unsigned char *fcache_bytes[255];
+int fcache_gc(void) {
+	struct fcache_t *tmp = fcache;
+	while(fcache) {
+		tmp = fcache;
+		sfree((void *)&tmp->name);
+		sfree((void *)&tmp->bytes);
+		fcache = fcache->next;
+		sfree((void *)&tmp);
+	}
+	sfree((void *)&fcache);
+	
+	logprintf(LOG_DEBUG, "garbage collected fcache library");
+	return 1;
+}
 
 int fcache_add(char *filename) {
-	unsigned long filesize, i = 0;
+
+	unsigned long filesize = 0, i = 0;
 	struct stat sb;
-	int rc;
-	struct fcache_t *node;
+	int rc = 0;
 
 	logprintf(LOG_NOTICE, "caching %s", filename);
 
 	if((rc = stat(filename, &sb)) != 0) {
-		logprintf(LOG_ERR, "failed to stat %s", filename);
+		logprintf(LOG_NOTICE, "failed to stat %s", filename);
 		return -1;
 	} else {
+		struct fcache_t *node = malloc(sizeof(struct fcache_t));
+		
 		filesize = (unsigned long)sb.st_size;
-		fcache_bytes[fcache_nr_files] = (unsigned char*)malloc(filesize + 100);
+		node->bytes = malloc(filesize + 100);
+		if(!node->bytes) {
+			logprintf(LOG_ERR, "out of memory");
+			return -1;
+		}
+		memset(node->bytes, '\0', filesize + 100);
 		int fd = open(filename, O_RDONLY);
 
 		i = 0;
 		while (i < filesize) {
-			rc = read(fd, fcache_bytes[fcache_nr_files]+i, filesize-i);
+			rc = read(fd, node->bytes+i, filesize-i);
 			i += (unsigned long)rc;
 		}
 		close(fd);
-		
-		node = malloc(sizeof(struct fcache_t));
-		node->id=fcache_nr_files;
-		node->size=filesize;
+
+		node->size = (int)filesize;
+		node->name = malloc(strlen(filename)+1);
 		strcpy(node->name, filename);
 		node->next = fcache;
 		fcache = node;
-
-		fcache_nr_files++;		
-		return fcache_nr_files-1;	
+		return 0;
 	}
 	return -1;
 }
 
-short fcache_get_id(char *filename, int *out) {
+short fcache_get_size(char *filename, int *out) {
 	struct fcache_t *ftmp = fcache;
-	while(ftmp != NULL) {
-		if(strcmp(ftmp->name, filename) == 0) {
-			*out = ftmp->id;
-			return 0;
-		}
-		ftmp = ftmp->next;
-	}
-	return -1;
-}
-
-short fcache_get_size(char *filename, unsigned long *out) {
-	struct fcache_t *ftmp = fcache;
-	while(ftmp != NULL) {
+	while(ftmp) {
 		if(strcmp(ftmp->name, filename) == 0) {
 			*out = ftmp->size;
 			return 0;
@@ -90,6 +96,13 @@ short fcache_get_size(char *filename, unsigned long *out) {
 	return -1;
 }
 
-unsigned char *fcache_get_bytes(int id) {
-	return fcache_bytes[id];
+unsigned char *fcache_get_bytes(char *filename) {
+	struct fcache_t *ftmp = fcache;
+	while(ftmp) {
+		if(strcmp(ftmp->name, filename) == 0) {
+			return ftmp->bytes;
+		}
+		ftmp = ftmp->next;
+	}
+	return NULL;
 }

@@ -1,0 +1,62 @@
+[{
+	"name": "progress",
+	"type" : "shape",
+	"shape": "rectangle",
+	"x": 265,
+	"y": 175,
+	"width": 272,
+	"height": 149,
+	"filled": 1,
+	"z-index": 1,
+	"color": [ 21, 49, 60 ]
+}, {
+	"name": "progress",
+	"type" : "shape",
+	"shape": "rectangle",
+	"x": 235,
+	"y": 146,
+	"width": 330,
+	"height": 207,
+	"border": 26,
+	"z-index": 1,
+	"color": [ 249, 149, 29 ]
+}, {
+	"name": "logo",
+	"type": "image",
+	"y": -195,
+	"z-index": 2,
+	"image": "example/logo.png"
+}, {
+	"name": "text",
+	"type": "text",
+	"x": 204,
+	"y": 148,
+	"size": 28,
+	"align": "right",
+	"decoration": "none",
+	"spacing": 2,
+	"font": "example/Comfortaa-Light.ttf",
+	"text": "loading...",
+	"z-index": 2,
+	"color": [ 150, 150, 155 ]
+}, {
+	"name": "progress",
+	"type": "progress",
+	"y": 110,
+	"percentage": 0,
+	"z-index": 2,
+	"image": "example/progressbar.png",
+	"inactive": [ "example/empty.png", "example/empty.png", "example/empty.png" ],
+	"active": [ "example/full.png", "example/full.png", "example/full.png" ]
+}, {
+	"name": "progress",
+	"type" : "shape",
+	"shape": "rectangle",
+	"x": 192,
+	"y": 402,
+	"width": 415,
+	"height": 33,
+	"border": 3,
+	"z-index": 2,
+	"color": [ 150, 150, 155 ]
+}]

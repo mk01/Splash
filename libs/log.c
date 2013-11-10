@@ -22,6 +22,7 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #include <stdarg.h>
 #include <errno.h>
 #include <syslog.h>
+#include <sys/time.h>
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
@@ -29,29 +30,37 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #include <libgen.h>
 
 #include "config.h"
+#include "common.h"
 #include "gc.h"
 #include "log.h"
 
 FILE *lf=NULL;
 
-/* Enable log */
-int filelog = 1;
-int shelllog = 1;
-int loglevel = LOG_INFO;
-char logfile[1024] = LOG_FILE;
+char *logfile = NULL;
+char *logpath = NULL;
 
 int log_gc(void) {
-	if(lf != NULL) {
-		if(fclose(lf) != 0)
+	if(lf) {
+		if(fclose(lf) != 0) {
 			return 0;
+		}
+		else {
+			lf = NULL;
+		}
 	}
+	sfree((void *)&logfile);
+	sfree((void *)&logpath);
+
 	return 1;
 }
 
 void logprintf(int prio, const char *format_str, ...) {
 	int save_errno = errno;
 	va_list ap;
-
+	if(logfile == NULL) {
+		logfile = realloc(logfile, strlen(LOG_FILE)+1);
+		strcpy(logfile, LOG_FILE);
+	}
 	if(filelog == 0 && shelllog == 0)
 		return;
 
@@ -64,14 +73,10 @@ void logprintf(int prio, const char *format_str, ...) {
 			}
 		}
 
-		time_t current;
-		char *currents;
-
-		current=time(&current);
-		currents=ctime(&current);
-
 		if(filelog == 1 && lf != NULL && loglevel < LOG_DEBUG) {
-			fprintf(lf,"[%15.15s] %s: ",currents+4, progname);
+			logmarkup();
+
+			fputs(debug_log, lf);
 			va_start(ap, format_str);
 			if(prio==LOG_WARNING)
 				fprintf(lf,"WARNING: ");
@@ -87,11 +92,11 @@ void logprintf(int prio, const char *format_str, ...) {
 			va_end(ap);
 		}
 
-		if(shelllog == 1) {
-
-			fprintf(stderr, "[%15.15s] %s: ",currents+4, progname);
+		if(shelllog == 1 || prio == LOG_ERR) {
+			logmarkup();
+			fputc('\n', stderr);
+			fputs(debug_log, stderr);
 			va_start(ap, format_str);
-
 			if(prio==LOG_WARNING)
 				fprintf(stderr, "WARNING: ");
 			if(prio==LOG_ERR)
@@ -103,11 +108,12 @@ void logprintf(int prio, const char *format_str, ...) {
 			if(prio==LOG_DEBUG)
 				fprintf(stderr, "DEBUG: ");
 			vfprintf(stderr, format_str, ap);
-			fputc('\n',stderr);
+			fputc('\n', stderr);
 			fflush(stderr);
 			va_end(ap);
 		}
 	}
+	sfree((void *)&logfile);
 	errno = save_errno;
 }
 
@@ -124,58 +130,73 @@ void logperror(int prio, const char *s) {
 	// errno = save_errno;
 }
 
-void enable_file_log(void) {
+void log_file_enable(void) {
 	filelog = 1;
 }
 
-void disable_file_log(void) {
+void log_file_disable(void) {
 	filelog = 0;
 }
 
-void enable_shell_log(void) {
+void log_shell_enable(void) {
 	shelllog = 1;
 }
 
-void disable_shell_log(void) {
+void log_shell_disable(void) {
 	shelllog = 0;
 }
 
-void set_logfile(char *log) {
+void log_file_set(char *log) {
 	struct stat s;
 	char *filename = basename(log);
-	char path[1024];
 	size_t i = (strlen(log)-strlen(filename));
+	logpath = realloc(logpath, i+1);
+	memset(logpath, '\0', i+1);
+	strncpy(logpath, log, i);
 
-	memset(path, '\0', sizeof(path));
-	memcpy(path, log, i);
-
-	if(strcmp(basename(log), log) != 0) {
-		int err = stat(path, &s);
+	if(strcmp(filename, log) != 0) {
+		int err = stat(logpath, &s);
 		if(err == -1) {
 			if(ENOENT == errno) {
 				logprintf(LOG_ERR, "the log file folder does not exist", optarg);
+				sfree((void *)&logpath);
 				exit(EXIT_FAILURE);
 			} else {
 				logprintf(LOG_ERR, "failed to run stat on log folder", optarg);
+				sfree((void *)&logpath);
 				exit(EXIT_FAILURE);
 			}
 		} else {
 			if(S_ISDIR(s.st_mode)) {
-				strcpy(logfile,log);
+				logfile = realloc(logfile, strlen(log)+1);
+				strcpy(logfile, log);
 			} else {
 				logprintf(LOG_ERR, "the log file folder does not exist", optarg);
+				sfree((void *)&logpath);
 				exit(EXIT_FAILURE);
 			}
 		}
 	} else {
-		strcpy(logfile,log);
+		logfile = realloc(logfile, strlen(log)+1);
+		strcpy(logfile, log);
 	}
+
+	if(lf == NULL && filelog == 1) {
+		if((lf = fopen(logfile, "w")) == NULL) {
+			logprintf(LOG_WARNING, "could not open logfile %s", logfile);
+		} else {
+			if(fclose(lf) == 0) {
+				lf = NULL;
+			}
+		}
+	}
+	sfree((void *)&logpath);
 }
 
-void set_loglevel(int level) {
+void log_level_set(int level) {
 	loglevel = level;
 }
 
-int get_loglevel(void) {
+int log_level_get(void) {
 	return loglevel;
 }

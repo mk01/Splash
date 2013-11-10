@@ -21,16 +21,16 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #define _LOG_H_
 
 #include <syslog.h>
-#include "config.h"
 
 void logprintf(int prio, const char *format_str, ...);
 void logperror(int prio, const char *s);
-void enable_file_log(void);
-void disable_file_log(void);
-void enable_shell_log(void);
-void disable_shell_log(void);
-void set_logfile(char *file);
-void set_loglevel(int level);
-int get_loglevel(void);
+void log_file_enable(void);
+void log_file_disable(void);
+void log_shell_enable(void);
+void log_shell_disable(void);
+void log_file_set(char *file);
+void log_level_set(int level);
+int log_level_get(void);
+int log_gc(void);
 
 #endif

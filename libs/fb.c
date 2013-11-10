@@ -33,6 +33,7 @@ Various functions used in this file are derived from fbi (Gerd Hoffmann <gerd@kr
 #include <linux/kd.h>
 #include <sys/mman.h>
 
+#include "common.h"
 #include "fb.h"
 #include "gc.h"
 #include "config.h"
@@ -56,10 +57,36 @@ unsigned long fb_mem_offset = 0;
 
 char *fbp = 0;
 
+unsigned short int ***zmap = NULL;
+
+void fb_init_zmap(void) {
+    size_t zindexes = ZINDEXES, width = fb_width(), height = fb_height();
+    int a = 0, b = 0;
+ 
+    if(!(zmap = calloc(zindexes, sizeof(int**)))) {
+        logprintf(LOG_ERR, "out of memory");
+        exit(EXIT_FAILURE);
+    }
+ 
+    for(a=0;a<zindexes;a++) {
+        if(!(zmap[a] = calloc(width, sizeof(int*)))) {
+            logprintf(LOG_ERR, "out of memory");
+            exit(EXIT_FAILURE);
+        }
+ 
+        for(b=0;b<width;b++) {
+            if(!(zmap[a][b] = calloc(height, sizeof(int)))) {
+                fprintf(stderr, "out of memory");
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+}
+
 void fb_memset(void *addr, int c, size_t len) {
 #if 1
     unsigned int i, *p;
-    
+
     i = (c & 0xff) << 8;
     i |= i << 16;
     len >>= 2;
@@ -71,7 +98,7 @@ void fb_memset(void *addr, int c, size_t len) {
 }
 
 void fb_setvt(void) {
-	int vtno;
+	int vtno = -1;
     struct vt_stat vts;
     char vtname[12];
 
@@ -80,30 +107,30 @@ void fb_setvt(void) {
 		logprintf(LOG_ERR, "could not open /dev/tty0");
 		exit(EXIT_FAILURE);
 	}
-	
-	if(ioctl( cur_tty, VT_GETSTATE, &vts ) == -1) {
+
+	if(ioctl(cur_tty, VT_GETSTATE, &vts) == -1) {
 		logprintf(LOG_ERR, "VT_GETSTATE failed on /dev/tty0");
 		exit(EXIT_FAILURE);
 	}
 
-	orig_vt_no = vts.v_active;	
-	
-	if(ioctl(cur_tty, VT_OPENQRY, vtno) == -1) {
-		logprintf(LOG_NOTICE, "no open ttys available");
+	orig_vt_no = vts.v_active;
+
+	if(ioctl(cur_tty, VT_OPENQRY, &vtno) == -1) {
+		logprintf(LOG_ERR, "no open ttys available");
 	}
 
 	if(close(cur_tty) == -1) {
 		logprintf(LOG_ERR, "could not close parent tty");
 		exit(EXIT_FAILURE);
 	}
-		
+
     if(vtno < 0) {
-		if(ioctl(tty,VT_OPENQRY, &vtno) == -1 || vtno == -1) {
+		if(ioctl(tty, VT_OPENQRY, &vtno) == -1 || vtno == -1) {
 			logprintf(LOG_ERR, "ioctl VT_OPENQRY");
 			exit(EXIT_FAILURE);
 		}
-    }	
-	
+    }
+
     vtno &= 0xff;
     sprintf(vtname, "/dev/tty%d", vtno);
     chown(vtname, getuid(), getgid());
@@ -111,7 +138,7 @@ void fb_setvt(void) {
 		logprintf(LOG_ERR, "access %s: %s\n", vtname,strerror(errno));
 		exit(EXIT_FAILURE);
     }
-	
+
     close(tty);
     close(0);
     close(1);
@@ -128,11 +155,12 @@ void fb_setvt(void) {
     }
 
     orig_vt_no = vts.v_active;
-    
+
 	if(ioctl(tty, VT_ACTIVATE, vtno) == -1) {
 		logprintf(LOG_ERR, "ioctl VT_ACTIVATE");
 		exit(EXIT_FAILURE);
     }
+
     if(ioctl(tty, VT_WAITACTIVE, vtno) == -1) {
 		logprintf(LOG_ERR, "ioctl VT_WAITACTIVE");
 		exit(EXIT_FAILURE);
@@ -150,7 +178,7 @@ void fb_cleanup(void) {
 		logprintf(LOG_ERR, "ioctl FBIOGET_FSCREENINFO");
 
 	if(ovinfo.bits_per_pixel == 8 || finfo.visual == FB_VISUAL_DIRECTCOLOR) {
-		if(ioctl(fbfd, FBIOPUTCMAP,&ocmap) == -1)
+		if(ioctl(fbfd, FBIOPUTCMAP, &ocmap) == -1)
 			logprintf(LOG_ERR, "ioctl FBIOPUTCMAP");
 	}
 	close(fbfd);
@@ -177,13 +205,12 @@ int fb_gc(void) {
 	fb_clear_mem();
 	fb_clear_screen();
 	fb_cleanup();
+	sfree((void *)zmap);
 	close(fbfd);
 	return EXIT_SUCCESS;
 }
 
 void fb_init(void) {
-
-	gc_attach(fb_gc);
 
 	unsigned long page_mask;
     struct vt_stat vts;
@@ -226,8 +253,9 @@ void fb_init(void) {
 		logprintf(LOG_ERR, "ioctl VT_GETMODE");
 		exit(EXIT_FAILURE);
     }
+
     tcgetattr(tty, &term);
-    
+
     if(ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo) == -1) {
 		logprintf(LOG_ERR,"ioctl FBIOGET_VSCREENINFO");
 		exit(EXIT_FAILURE);
@@ -236,34 +264,84 @@ void fb_init(void) {
     if(ioctl(fbfd, FBIOGET_FSCREENINFO, &finfo) == -1) {
 		logprintf(LOG_ERR, "ioctl FBIOGET_FSCREENINFO");
 		exit(EXIT_FAILURE);
-    }	
+    }
 
     screensize = vinfo.xres * vinfo.yres * vinfo.bits_per_pixel / 8;
 
 	page_mask = (unsigned long)getpagesize()-1;
 	fb_mem_offset = (unsigned long)(finfo.smem_start) & page_mask;
     fbp = (char *)mmap(0, finfo.smem_len+fb_mem_offset, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
-   
+
 	if((int)fbp == -1) {
         logprintf(LOG_ERR, "failed to map framebuffer device to memory");
         exit(EXIT_FAILURE);
     }
-	
+ 
 	if(ioctl(tty, KDSETMODE, KD_GRAPHICS) == -1) {
 		logprintf(LOG_ERR, "ioctl KDSETMODE");
 		fb_cleanup();
 		exit(EXIT_FAILURE);
     }
-	
+
 	fb_memset(fbp+fb_mem_offset, 0, finfo.line_length * vinfo.yres);
+	
+	fb_init_zmap();
 }
 
 unsigned long fb_get_location(int x, int y) {
 	return ((unsigned long)x+(unsigned long)vinfo.xoffset) * (vinfo.bits_per_pixel/8) + ((unsigned long)y+(unsigned long)vinfo.yoffset) * finfo.line_length;
 }
 
-void fb_put_pixel(int x, int y, unsigned short int color) {
+void fb_rm_pixel(int x, int y, int z, unsigned short int color) {
+	int a = 0;
 	unsigned long location = fb_get_location(x, y);
+
+	if(z > -1) {
+		if(z > ZINDEXES) {
+			logprintf(LOG_ERR, "z-index out of range");
+			exit(EXIT_FAILURE);
+		}
+
+		zmap[z][x][y] = 0;
+
+		for(a=z-1;a>=0;--a) {
+			if(zmap[a][x][y] > 0) {
+				color = zmap[a][x][y];
+				break;
+			}
+		}
+	}
+
+	if((fbp + location))
+		*((unsigned short*)((unsigned long)fbp + location)) = color;
+}
+
+
+void fb_put_pixel(int x, int y, int z, unsigned short int color) {
+	int a = 0;
+	unsigned long location = fb_get_location(x, y);
+
+	if(color == 0) {
+		color = 1;
+	}
+
+	if(z > -1) {
+		if(z > ZINDEXES) {
+			logprintf(LOG_ERR, "z-index out of range");
+			exit(EXIT_FAILURE);
+		}
+		zmap[z][x][y] = color;
+
+		if(ZINDEXES > z) {
+			for(a=ZINDEXES-1;a>=0;--a) {
+				if(zmap[a][x][y] > 0) {
+					color = zmap[a][x][y];
+					break;
+				}
+			}
+		}
+	}
+
 	if((fbp + location))
 		*((unsigned short*)((unsigned long)fbp + location)) = color;
 }
@@ -274,4 +352,12 @@ unsigned long fb_width2px(int i) {
 
 unsigned long fb_height2px(int i) {
 	return ((unsigned long)i+(unsigned long)vinfo.yoffset)*finfo.line_length;
+}
+
+unsigned short fb_width(void) {
+	return (unsigned short)vinfo.xres;
+}
+
+unsigned short fb_height(void) {
+	return (unsigned short)vinfo.yres;
 }
