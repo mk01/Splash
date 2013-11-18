@@ -205,7 +205,7 @@ int fb_gc(void) {
 	fb_clear_mem();
 	fb_clear_screen();
 	fb_cleanup();
-	sfree((void *)zmap);
+	sfree((void *)&zmap);
 	close(fbfd);
 	return EXIT_SUCCESS;
 }
