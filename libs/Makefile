@@ -25,10 +25,10 @@ all: json.o draw.o $(OBJS) libs.o
 
 json.o: json.c json.h
 	$(GCC) -ffast-math $(OSFLAGS) -Wno-conversion -g -isystem. -isystem.. -c $(patsubst %.o,%.c,$@)
-
-lodepng.o: lodepng.c lodepng.h
-	$(GCC) -ffast-math $(OSFLAGS) -Wno-conversion -g -isystem. -isystem.. -c $(patsubst %.o,%.c,$@)	
 	
+lodepng.o: lodepng.c lodepng.h
+	$(GCC) -ffast-math $(OSFLAGS) -Wno-conversion -g -isystem. -isystem.. -c $(patsubst %.o,%.c,$@)
+
 draw.o: draw.c draw.h
 	$(GCC) $(CFLAGS) -isystem/usr/include/ -c $(patsubst %.o,%.c,$@)
 

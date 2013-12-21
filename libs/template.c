@@ -297,13 +297,13 @@ void template_add_progress(JsonNode *root) {
 	}
 	
 	if(x != 0) {
-		x = (fb_width()/2)+x;
+		x = (fb_width()/2)-(width/2)+x;
 	} else {
 		x = (fb_width()/2)-(width/2);
 	}
 	
 	if(y != 0) {
-		y = (fb_height()/2)+y;
+		y = (fb_height()/2)-(height/2)+y;
 	} else {
 		y = (fb_height()/2)-(height/2);
 	}
@@ -422,13 +422,13 @@ void template_add_image(JsonNode *root) {
 	}
 
 	if(x != 0) {
-		x = (fb_width()/2)+x;
+		x = (fb_width()/2)-(width/2)+x;
 	} else {
 		x = (fb_width()/2)-(width/2);
 	}
 	
 	if(y != 0) {
-		y = (fb_height()/2)+y;
+		y = (fb_height()/2)-(height/2)+y;
 	} else {
 		y = (fb_height()/2)-(height/2);
 	}
@@ -515,15 +515,25 @@ void template_add_text(JsonNode *root) {
 	height = txt_get_height(font, text, (FT_UInt)size, spacing, a, z);	
 	
 	if(x != 0) {
-		x = (fb_width()/2)+x;
+		x = (fb_width()/2)-(width/2)+x;
 	} else {
 		x = (fb_width()/2)-(width/2);
 	}
 	
 	if(y != 0) {
-		y = (fb_height()/2)+y;
+		y = (fb_height()/2)-(height/2)+y;
 	} else {
 		y = (fb_height()/2)-(height/2);
+	}
+	
+	if(z == ALIGN_CENTER) {
+		x += width/2;
+	}
+	if(z == ALIGN_LEFT) {
+		x += width-(width/4);
+	}
+	if(z == ALIGN_RIGHT) {
+		x += width/4;
 	}
 
 	tnode->name = malloc(strlen(name)+1);
@@ -588,6 +598,7 @@ void template_add_shape(JsonNode *root) {
 		json_find_number(root, "y2", &y2);
 		json_find_number(root, "thickness", &thickness);
 	}
+
 	if(strcmp(shape, "rectangle") == 0) {
 		json_find_number(root, "width", &width);
 		json_find_number(root, "height", &height);
@@ -611,7 +622,20 @@ void template_add_shape(JsonNode *root) {
 			radius = (int)((double)fb_height() / 2);
 			radius -= 1;
 		}
+	} else {
+		if(x != 0) {
+			x = (fb_width()/2)-(width/2)+x;
+		} else {
+			x = (fb_width()/2)-(width/2);
+		}
+		
+		if(y != 0) {
+			y = (fb_height()/2)-(height/2)+y;
+		} else {
+			y = (fb_height()/2)-(height/2);
+		}
 	}
+	
 	if(filled == 1 && border > 0) {
 		logprintf(LOG_NOTICE, "template element \"%s\", \"filled\" overrides \"border\"", tnode->name);
 	}
@@ -622,7 +646,7 @@ void template_add_shape(JsonNode *root) {
 	tnode->name = malloc(strlen(name)+1);
 	strcpy(tnode->name, name);
 
-	tnode->settings = NULL;
+	tnode->settings = NULL;		
 	
 	if(strcmp(shape, "circle") == 0) {
 		if(fullscreen == 1) {

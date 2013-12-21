@@ -37,7 +37,7 @@ splash-daemon: daemon.c $(INCLUDES) $(LIBS)
 	$(GCC) $(CFLAGS) -lm -o $@ $(patsubst splash-%,%.c,$@) $(LIBS)
 	
 splash-send: send.c $(INCLUDES) $(LIBS)
-	$(GCC) $(CFLAGS) -lm -o $@ $(patsubst splash-%,%.c,$@) $(LIBS)	
+	$(GCC) $(CFLAGS) -lm -o $@ $(patsubst splash-%,%.c,$@) $(LIBS)
 
 clean:
 	rm splash-* >/dev/null 2>&1 || true
