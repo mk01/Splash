@@ -28,6 +28,7 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <ctype.h>
 #define __USE_GNU
 #include <pthread.h>
@@ -253,6 +254,7 @@ void *update_progress(void *param) {
 	pthread_mutex_lock(&progress_lock);
 	int last_percentage = 0;
 	int new_percentage = -1;
+	int n = 0;
 
 	while(main_loop) {
 		int target_width = 0;
@@ -369,7 +371,23 @@ void *update_progress(void *param) {
 				pthread_mutex_unlock(&progress_lock);
 			}
 		} else {
-			pthread_cond_wait(&progress_signal, &progress_lock);
+			if(percentage > 0 && percentage < 100) {
+				struct timeval tp;
+				struct timespec ts;
+
+				gettimeofday(&tp, NULL);
+				ts.tv_sec = tp.tv_sec;
+				ts.tv_nsec = tp.tv_usec * 1000;
+				ts.tv_sec += 1;
+
+				n = pthread_cond_timedwait(&progress_signal, &progress_lock, &ts);
+				if(n == ETIMEDOUT) {
+					percentage++;
+					draw_loop = 1;
+				}
+			} else {
+				n = pthread_cond_wait(&progress_signal, &progress_lock);
+			}
 		}
 	}
 	return (void *)NULL;
