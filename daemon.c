@@ -139,18 +139,18 @@ void main_draw_shape(struct template_t *tmp_tpl) {
 		if(nodaemon == 0) {
 			if(strcmp(sval, "rectangle") == 0) {
 				if(filled) {
-					draw_rectangle_filled(x, y, zindex, width, height, draw_color_16bit(color[0], color[1], color[2]));
+					draw_rectangle_filled(x, y, zindex, width, height, draw_color(color[0], color[1], color[2]));
 				} else {
-					draw_rectangle(x, y, zindex, width, height, border, draw_color_16bit(color[0], color[1], color[2]));
+					draw_rectangle(x, y, zindex, width, height, border, draw_color(color[0], color[1], color[2]));
 				}
 			} else if(strcmp(sval, "circle") == 0) {
 				if(filled) {
-					draw_circle_filled(x, y, zindex, radius, draw_color_16bit(color[0], color[1], color[2]));
+					draw_circle_filled(x, y, zindex, radius, draw_color(color[0], color[1], color[2]));
 				} else {
-					draw_circle(x, y, zindex, radius, border, draw_color_16bit(color[0], color[1], color[2]));
+					draw_circle(x, y, zindex, radius, border, draw_color(color[0], color[1], color[2]));
 				}
 			} else if(strcmp(sval, "line") == 0) {
-				draw_line(x1, y1, x2, y2, zindex, thickness, draw_color_16bit(color[0], color[1], color[2]));
+				draw_line(x1, y1, x2, y2, zindex, thickness, draw_color(color[0], color[1], color[2]));
 			}
 		}
 		if(fcolor) {
@@ -232,7 +232,7 @@ void main_draw_text(struct template_t *tmp_tpl, char *ntext) {
 		prevMessage = realloc(prevMessage, strlen(text)+1);
 		strcpy(prevMessage, text);
 		if(nodaemon == 0) {
-			draw_txt(x, y, zindex, font, (FT_UInt)size, text, draw_color_16bit(color[0], color[1], color[2]), spacing, decoration, align);
+			draw_txt(x, y, zindex, font, (FT_UInt)size, text, draw_color(color[0], color[1], color[2]), spacing, decoration, align);
 		}
 	}
 
@@ -246,7 +246,7 @@ void main_draw_text(struct template_t *tmp_tpl, char *ntext) {
 
 void main_draw_black(void) {
 	if(nodaemon == 0) {
-		draw_rectangle_filled(0, 0, -1, fb_width(), fb_height(), draw_color_16bit(0, 0, 0));
+		draw_rectangle_filled(0, 0, -1, fb_width(), fb_height(), draw_color(0, 0, 0));
 	}
 }
 

@@ -57,7 +57,7 @@ unsigned long fb_mem_offset = 0;
 
 char *fbp = 0;
 
-unsigned short int ***zmap = NULL;
+unsigned int ***zmap = NULL;
 
 void fb_init_zmap(void) {
     size_t zindexes = ZINDEXES, width = fb_width(), height = fb_height();
@@ -292,7 +292,7 @@ unsigned long fb_get_location(int x, int y) {
 	return ((unsigned long)x+(unsigned long)vinfo.xoffset) * (vinfo.bits_per_pixel/8) + ((unsigned long)y+(unsigned long)vinfo.yoffset) * finfo.line_length;
 }
 
-void fb_rm_pixel(int x, int y, int z, unsigned short int color) {
+void fb_rm_pixel(int x, int y, int z, unsigned int color) {
 	int a = 0;
 	unsigned long location = fb_get_location(x, y);
 
@@ -312,18 +312,24 @@ void fb_rm_pixel(int x, int y, int z, unsigned short int color) {
 		}
 	}
 
-	if((fbp + location))
-		*((unsigned short*)((unsigned long)fbp + location)) = color;
+	if((fbp + location)) 
+        {
+                if(vinfo.bits_per_pixel == 16)
+                        *((unsigned short*)((unsigned long)fbp + location)) = (unsigned short) color & 0xFFFF;
+                else
+                        *((unsigned int*)((unsigned long)fbp + location)) = color;
+        }
 }
 
 
-void fb_put_pixel(int x, int y, int z, unsigned short int color) {
+void fb_put_pixel(int x, int y, int z, unsigned int color) {
 	int a = 0;
 	unsigned long location = fb_get_location(x, y);
 
 	if(color == 0) {
 		color = 1;
 	}
+
 
 	if(z > -1) {
 		if(z > ZINDEXES) {
@@ -342,8 +348,13 @@ void fb_put_pixel(int x, int y, int z, unsigned short int color) {
 		}
 	}
 
-	if((fbp + location))
-		*((unsigned short*)((unsigned long)fbp + location)) = color;
+	if((fbp + location)) 
+        {
+                if(vinfo.bits_per_pixel == 16)
+                        *((unsigned short*)((unsigned long)fbp + location)) = (unsigned short) color & 0xFFFF;
+                else
+                        *((unsigned int*)((unsigned long)fbp + location)) = color;
+        }
 }
 
 unsigned long fb_width2px(int i) {
@@ -360,4 +371,16 @@ unsigned short fb_width(void) {
 
 unsigned short fb_height(void) {
 	return (unsigned short)vinfo.yres;
+}
+unsigned short fb_bpp(void) {
+	return (unsigned short)vinfo.bits_per_pixel;
+}
+unsigned short fb_roffset(void) {
+	return (unsigned short)vinfo.red.offset;
+}
+unsigned short fb_goffset(void) {
+	return (unsigned short)vinfo.green.offset;
+}
+unsigned short fb_boffset(void) {
+	return (unsigned short)vinfo.blue.offset;
 }

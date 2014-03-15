@@ -33,11 +33,46 @@ with Splash. If not, see <http://www.gnu.org/licenses/>
 #include "fcache.h"
 #include "lodepng.h"
 
-unsigned short draw_color_16bit(unsigned short r, unsigned short g, unsigned short b) {
-	return (unsigned short)((r / 8) << 11) | (unsigned short)((g / 4) << 5) | (b / 8);
+
+/*
+struct fb_bitfield {
+        __u32 offset;                   // beginning of bitfield        
+        __u32 length;                   // length of bitfield           
+        __u32 msb_right;                // != 0 : Most significant bit is 
+                                        // right 
+};
+
+struct fb_var_screeninfo {
+        __u32 xres;                     // visible resolution           
+        __u32 yres;
+        __u32 xres_virtual;             // virtual resolution           
+        __u32 yres_virtual;
+        __u32 xoffset;                  // offset from virtual to visible 
+        __u32 yoffset;                  // resolution                   
+
+        __u32 bits_per_pixel;           // guess what                   
+        __u32 grayscale;                // 0 = color, 1 = grayscale,    
+                                        // >1 = FOURCC                  
+        struct fb_bitfield red;         // bitfield in fb mem if true color, 
+        struct fb_bitfield green;       // else only length is significant 
+        struct fb_bitfield blue;
+        struct fb_bitfield transp;      // transparency                 
+
+*/
+
+unsigned int draw_color(unsigned short r, unsigned short g, unsigned short b) {
+	switch(fb_bpp())
+        {
+            default:
+            case 32:
+                    return (unsigned int)(r << fb_roffset() | g << fb_goffset() | b << fb_boffset());
+                    break;
+            case 16:
+                    return (unsigned short)((r / 8) << 11) | (unsigned short)((g / 4) << 5) | (b / 8);
+        }
 }
 
-void draw_rectangle_filled(int x, int y, int z, int width, int height, unsigned short color) {
+void draw_rectangle_filled(int x, int y, int z, int width, int height, unsigned int color) {
 	int a=0, b=0;
 	
 	for(a = x; a < x+width; a++) {
@@ -47,7 +82,7 @@ void draw_rectangle_filled(int x, int y, int z, int width, int height, unsigned 
 	}
 } 
 
-void draw_rectangle(int x, int y, int z, int width, int height, int border, unsigned short color) {
+void draw_rectangle(int x, int y, int z, int width, int height, int border, unsigned int color) {
 	int a=0, b=0;
 	
 	for(a = x; a < x+width; a++) {
@@ -59,7 +94,7 @@ void draw_rectangle(int x, int y, int z, int width, int height, int border, unsi
 	}
 }
 
-void draw_line(int x2, int y2, int x1, int y1, int z, int thickness, unsigned short color) {
+void draw_line(int x2, int y2, int x1, int y1, int z, int thickness, unsigned int color) {
 	const int dx = abs(x1-x2);
 	const int dy = abs(y1-y2);
 	int const1, const2, p, x, y, step, a;
@@ -106,7 +141,7 @@ void draw_line(int x2, int y2, int x1, int y1, int z, int thickness, unsigned sh
 }
 
 
-void draw_circle_filled(int xc, int yc, int z, int r, unsigned short color) {
+void draw_circle_filled(int xc, int yc, int z, int r, unsigned int color) {
 	int y, x;
 	xc+=r;
 	yc+=r;
@@ -119,7 +154,7 @@ void draw_circle_filled(int xc, int yc, int z, int r, unsigned short color) {
 	}
 }
 
-void draw_circle(int xc, int yc, int z, int r, int border, unsigned short color) {
+void draw_circle(int xc, int yc, int z, int r, int border, unsigned int color) {
 	int y, x;
 	xc+=r;
 	yc+=r;
@@ -226,7 +261,7 @@ void draw_jpg(int xc, int yc, int z, char *filename) {
 					g = *(raw_image+(x+line*(int)jpegInfo.image_width)*jpegInfo.num_components+1);
 					r = *(raw_image+(x+line*(int)jpegInfo.image_width)*jpegInfo.num_components+0);
 
-					fb_put_pixel(x+xc, line+yc, z, draw_color_16bit((((int)r & 0xFF) << 0), (((int)g & 0xFF) << 0), (((int)b & 0xFF) << 0)));
+					fb_put_pixel(x+xc, line+yc, z, draw_color(r, g, b));
 				}
 			}
 
@@ -307,7 +342,7 @@ void draw_png(int xc, int yc, int z, char *filename) {
 				g = (a * g + (255 - a) * checkerColor) / 255;
 				b = (a * b + (255 - a) * checkerColor) / 255;
 				if(a != 0) {
-					fb_put_pixel(x+xc, y+yc, z, draw_color_16bit((unsigned short)r, (unsigned short)g, (unsigned short)b));
+					fb_put_pixel(x+xc, y+yc, z, draw_color((unsigned short)r, (unsigned short)g, (unsigned short)b));
 				}
 			}
 		}
@@ -398,7 +433,7 @@ short txt_get_height(char *font, char *text, FT_UInt size, double spacing, int d
 	return -1;
 }
 
-void draw_rmtxt(double xc, double yc, int z, char *font, FT_UInt size, char *text, unsigned short int color, double spacing, int decoration, int align) {
+void draw_rmtxt(double xc, double yc, int z, char *font, FT_UInt size, char *text, unsigned int color, double spacing, int decoration, int align) {
 	int y = 0, x = 0, n = 0;
 	double a = 0;
 	int fontHeight = 0, fontWidth = 0;
@@ -485,7 +520,7 @@ void draw_rmtxt(double xc, double yc, int z, char *font, FT_UInt size, char *tex
 	}
 }
 
-void draw_txt(double xc, double yc, int z, char *font, FT_UInt size, char *text, unsigned short int color, double spacing, int decoration, int align) {
+void draw_txt(double xc, double yc, int z, char *font, FT_UInt size, char *text, unsigned int color, double spacing, int decoration, int align) {
 	int y = 0, x = 0, n = 0;
 	double a = 0;
 	int fontHeight = 0, fontWidth = 0;
